@@ -32,7 +32,6 @@ class Finanzas {
     this.buildMonths();
     this.renderAll();
 
-    // PWA SW
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("./sw.js").catch(() => {});
     }
@@ -40,10 +39,10 @@ class Finanzas {
 
   cacheEls() {
     this.tabs = [...document.querySelectorAll(".tab")];
-    this.panels = [...document.querySelectorAll(".panel")];
+    this.panels = [...document.querySelectorAll(".panel, .tab-content")];
     this.toastEl = document.getElementById("toast");
     this.sel = document.getElementById("mesSelector");
-    this.tabStrip = document.querySelector(".tabs");
+    this.tabStrip = document.querySelector(".tabs-scroll");
     this.btns = {
       tabPrev: document.getElementById("tabPrev"),
       tabNext: document.getElementById("tabNext"),
@@ -63,22 +62,19 @@ class Finanzas {
   }
 
   bindUI() {
-    // Tabs
     this.tabs.forEach((t) =>
       t.addEventListener("click", () => this.showTab(t.dataset.tab))
     );
 
-    // Scroll por flechas en la tira de tabs
     if (this.btns.tabPrev) {
       this.btns.tabPrev.onclick = () =>
-        this.tabStrip && this.tabStrip.scrollBy({ left: -200, behavior: "smooth" });
+        this.tabStrip && this.tabStrip.scrollBy({ left: -220, behavior: "smooth" });
     }
     if (this.btns.tabNext) {
       this.btns.tabNext.onclick = () =>
-        this.tabStrip && this.tabStrip.scrollBy({ left: 200, behavior: "smooth" });
+        this.tabStrip && this.tabStrip.scrollBy({ left: 220, behavior: "smooth" });
     }
 
-    // Selector de mes
     if (this.sel)
       this.sel.addEventListener("change", (e) => {
         this.mes = e.target.value;
@@ -87,7 +83,6 @@ class Finanzas {
         this.toast("Mes cambiado");
       });
 
-    // Botones superiores
     if (this.btns.addIngreso) this.btns.addIngreso.onclick = () => this.openForm("ingreso");
     if (this.btns.addFijo) this.btns.addFijo.onclick = () => this.openForm("fijo");
     if (this.btns.addTarjeta) this.btns.addTarjeta.onclick = () => this.openForm("tarjeta");
@@ -98,7 +93,6 @@ class Finanzas {
     if (this.btns.reset) this.btns.reset.onclick = () => this.reset();
     if (this.btns.closeModal) this.btns.closeModal.onclick = () => this.closeModal();
 
-    // Delegación: editar / eliminar / pagado / añadir ahorro
     document.body.addEventListener("click", (ev) => {
       const a = ev.target.closest("a[data-action]");
       if (!a) return;
@@ -112,7 +106,6 @@ class Finanzas {
       if (act === "paid") this.togglePagado(key, id);
     });
 
-    // Cerrar modal clic fuera + ESC
     if (this.btns.modal) {
       this.btns.modal.addEventListener("click", (e) => {
         if (e.target.id === "modal") this.closeModal();
@@ -125,7 +118,9 @@ class Finanzas {
 
   showTab(name) {
     this.tabs.forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
-    this.panels.forEach((p) => p.classList.toggle("hidden", p.id !== name));
+    this.panels.forEach((p) =>
+      p.classList.toggle("hidden", !(p.id === name || p.dataset.tab === name))
+    );
   }
 
   /* ====== Storage & datos ====== */
@@ -138,28 +133,13 @@ class Finanzas {
       const raw = localStorage.getItem(this.key);
       if (raw) return JSON.parse(raw);
     } catch {}
-    // Semilla
     const seed = {};
     seed[this.iniYM] = {
       ingresos: [
-        {
-          id: this.uid(),
-          nombre: "Salario",
-          monto: 3500000,
-          categoria: "Trabajo",
-          fecha: `${this.iniYM}-01`,
-          pagadoMes: true,
-        },
+        { id: this.uid(), nombre: "Salario", monto: 3500000, categoria: "Trabajo", fecha: `${this.iniYM}-01`, pagadoMes: true },
       ],
       gastosFijos: [
-        {
-          id: this.uid(),
-          nombre: "Arriendo",
-          monto: 1200000,
-          categoria: "Vivienda",
-          fecha: `${this.iniYM}-01`,
-          pagadoMes: true,
-        },
+        { id: this.uid(), nombre: "Arriendo", monto: 1200000, categoria: "Vivienda", fecha: `${this.iniYM}-01`, pagadoMes: true },
       ],
       tarjetas: [],
       creditos: [
@@ -178,23 +158,10 @@ class Finanzas {
         },
       ],
       gastosCompras: [
-        {
-          id: this.uid(),
-          nombre: "Supermercado",
-          monto: 400000,
-          categoria: "Alimentación",
-          fecha: `${this.iniYM}-10`,
-          pagadoMes: true,
-        },
+        { id: this.uid(), nombre: "Supermercado", monto: 400000, categoria: "Alimentación", fecha: `${this.iniYM}-10`, pagadoMes: true },
       ],
       ahorros: [
-        {
-          id: this.uid(),
-          nombre: "Emergencias",
-          meta: 5000000,
-          actual: 1200000,
-          fecha: `${this.iniYM}-01`,
-        },
+        { id: this.uid(), nombre: "Emergencias", meta: 5000000, actual: 1200000, fecha: `${this.iniYM}-01` },
       ],
     };
     return seed;
@@ -209,37 +176,23 @@ class Finanzas {
   ensureMonth(key) {
     if (this.data[key]) return;
 
-    // Mes previo
     const [y, m] = key.split("-").map(Number);
-    let py = y,
-      pm = m - 1;
-    if (pm <= 0) {
-      pm = 12;
-      py--;
-    }
+    let py = y, pm = m - 1;
+    if (pm <= 0) { pm = 12; py--; }
     const prev = `${py}-${String(pm).padStart(2, "0")}`;
 
     if (this.data[prev]) {
-      // Copia profunda + nuevos IDs + pagadoMes = false
       const copy = JSON.parse(JSON.stringify(this.data[prev]));
       ["ingresos", "gastosFijos", "tarjetas", "creditos", "gastosCompras", "ahorros"].forEach((k) => {
         copy[k] = (copy[k] || []).map((it) => {
           const n = { ...it, id: this.uid(), fecha: `${key}-01` };
-          if ("pagadoMes" in n) n.pagadoMes = false;
-          // Para deudas, no avanzar cuotas pagadas automáticamente
+          if ("pagadoMes" in n) n.pagadoMes = false; // nuevo mes => marcar pendiente
           return n;
         });
       });
       this.data[key] = copy;
     } else {
-      this.data[key] = {
-        ingresos: [],
-        gastosFijos: [],
-        tarjetas: [],
-        creditos: [],
-        gastosCompras: [],
-        ahorros: [],
-      };
+      this.data[key] = { ingresos: [], gastosFijos: [], tarjetas: [], creditos: [], gastosCompras: [], ahorros: [] };
     }
     this.save();
   }
@@ -252,10 +205,11 @@ class Finanzas {
     const d = new Date(y, m - 1, 1);
     for (let i = 0; i <= 36; i++) {
       const val = d.toISOString().slice(0, 7);
-      const txt = d.toLocaleDateString("es-CO", { month: "long", year: "numeric" });
+      let txt = d.toLocaleDateString("es-CO", { month: "long", year: "numeric" });
+      txt = txt[0].toUpperCase() + txt.slice(1);
       const opt = document.createElement("option");
       opt.value = val;
-      opt.textContent = txt[0].toUpperCase() + txt.slice(1);
+      opt.textContent = txt;
       if (val === this.mes) opt.selected = true;
       sel.appendChild(opt);
       d.setMonth(d.getMonth() + 1);
@@ -283,21 +237,40 @@ class Finanzas {
     return Math.round(base + avalMensual + ivaAvalMensual);
   }
 
-  /** Recalcula cuotas guardadas para evitar “pegadas” */
+  /** Recalcula cuotas guardadas y pone 0 si ya terminó */
   recalcDeudas(d) {
     (d.tarjetas || []).forEach((it) => {
-      const nueva = this.cuota(Number(it.montoTotal || 0), Number(it.tasaMensual || 0), parseInt(it.numeroCuotas || 0));
-      if (!it.cuotaMensual || Math.abs((it.cuotaMensual || 0) - nueva) > 1) it.cuotaMensual = nueva;
+      const nCuotas = parseInt(it.numeroCuotas || 0);
+      const pagadas = parseInt(it.cuotasPagadas || 0);
+      const tasa = Number(it.tasaMensual || 0);
+      const M = Number(it.montoTotal || 0);
+
+      if (nCuotas > 0 && pagadas >= nCuotas) {
+        it.cuotaMensual = 0;
+      } else {
+        const nueva = this.cuota(M, tasa, nCuotas);
+        if (!it.cuotaMensual || Math.abs((it.cuotaMensual || 0) - nueva) > 1) {
+          it.cuotaMensual = nueva;
+        }
+      }
     });
+
     (d.creditos || []).forEach((it) => {
-      const nueva = this.cuota(
-        Number(it.montoTotal || 0),
-        Number(it.tasaMensual || 0),
-        parseInt(it.numeroCuotas || 0),
-        Number(it.avalPct || 0),
-        Number(it.ivaAvalPct || 0)
-      );
-      if (!it.cuotaMensual || Math.abs((it.cuotaMensual || 0) - nueva) > 1) it.cuotaMensual = nueva;
+      const nCuotas = parseInt(it.numeroCuotas || 0);
+      const pagadas = parseInt(it.cuotasPagadas || 0);
+      const tasa = Number(it.tasaMensual || 0);
+      const M = Number(it.montoTotal || 0);
+      const aval = Number(it.avalPct || 0);
+      const ivaAval = Number(it.ivaAvalPct || 0);
+
+      if (nCuotas > 0 && pagadas >= nCuotas) {
+        it.cuotaMensual = 0;
+      } else {
+        const nueva = this.cuota(M, tasa, nCuotas, aval, ivaAval);
+        if (!it.cuotaMensual || Math.abs((it.cuotaMensual || 0) - nueva) > 1) {
+          it.cuotaMensual = nueva;
+        }
+      }
     });
   }
 
@@ -319,44 +292,42 @@ class Finanzas {
     this.renderList("listaCompras", d.gastosCompras, (i) => this.rowGeneric("🛒", i, "gastosCompras", i.monto));
     this.renderList("listaAhorros", d.ahorros, (i) => this.rowAhorro(i, "ahorros"));
 
-    // Totales (solo cuentan los NO pagados para gastos; y los ingresos SÍ suman si están pagados)
-    const totalIng = d.ingresos
-      .filter((x) => x.pagadoMes !== false) // por defecto true si no existe
-      .reduce((s, x) => s + (x.monto || 0), 0);
+    // === Totales ===
+    const ALL_EXPENSES = true; // <- cámbialo a false si quieres restar solo lo pendiente del mes
 
-    const totalFix = d.gastosFijos
-      .filter((x) => x.pagadoMes !== true) // si no pagado, cuenta como gasto pendiente
-      .reduce((s, x) => s + (x.monto || 0), 0);
+    const totalIng = d.ingresos.reduce((s, x) => s + (Number(x.monto) || 0), 0);
 
-    const totalTar = d.tarjetas
-      .filter((x) => x.pagadoMes !== true)
-      .reduce((s, x) => s + (x.cuotaMensual || 0), 0);
+    const gastosFijosAll = d.gastosFijos.reduce((s, x) => s + (Number(x.monto) || 0), 0);
+    const gastosFijosPend = d.gastosFijos.filter(x => x.pagadoMes !== true).reduce((s, x) => s + (Number(x.monto) || 0), 0);
 
-    const totalCre = d.creditos
-      .filter((x) => x.pagadoMes !== true)
-      .reduce((s, x) => s + (x.cuotaMensual || 0), 0);
+    const tarjetasAll = d.tarjetas.reduce((s, x) => s + (Number(x.cuotaMensual) || 0), 0);
+    const tarjetasPend = d.tarjetas.filter(x => x.pagadoMes !== true).reduce((s, x) => s + (Number(x.cuotaMensual) || 0), 0);
 
-    const totalCom = d.gastosCompras
-      .filter((x) => x.pagadoMes !== true)
-      .reduce((s, x) => s + (x.monto || 0), 0);
+    const creditosAll = d.creditos.reduce((s, x) => s + (Number(x.cuotaMensual) || 0), 0);
+    const creditosPend = d.creditos.filter(x => x.pagadoMes !== true).reduce((s, x) => s + (Number(x.cuotaMensual) || 0), 0);
 
-    const totalAho = d.ahorros.reduce((s, x) => s + (x.actual || 0), 0);
+    const comprasAll = d.gastosCompras.reduce((s, x) => s + (Number(x.monto) || 0), 0);
+    const comprasPend = d.gastosCompras.filter(x => x.pagadoMes !== true).reduce((s, x) => s + (Number(x.monto) || 0), 0);
+
+    const totalAho = d.ahorros.reduce((s, x) => s + (Number(x.actual) || 0), 0);
+
+    const totalFix = ALL_EXPENSES ? gastosFijosAll : gastosFijosPend;
+    const totalTar = ALL_EXPENSES ? tarjetasAll : tarjetasPend;
+    const totalCre = ALL_EXPENSES ? creditosAll : creditosPend;
+    const totalCom = ALL_EXPENSES ? comprasAll : comprasPend;
 
     const totalG = totalFix + totalTar + totalCre + totalCom;
     const libre = totalIng - totalG;
 
-    const set = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = val;
-    };
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     set("sumIngresos", fmt(totalIng));
-    set("sumFijos", fmt(totalFix));
+    set("sumFijos",    fmt(totalFix));
     set("sumTarjetas", fmt(totalTar));
     set("sumCreditos", fmt(totalCre));
-    set("sumCompras", fmt(totalCom));
-    set("sumAhorros", fmt(totalAho));
-    set("sumGastos", fmt(totalG));
-    set("sumLibre", fmt(libre));
+    set("sumCompras",  fmt(totalCom));
+    set("sumAhorros",  fmt(totalAho));
+    set("sumGastos",   fmt(totalG));
+    set("sumLibre",    fmt(libre));
 
     this.renderDashboard(totalIng, totalG, libre);
     this.renderMetas(d.ahorros);
@@ -453,12 +424,10 @@ class Finanzas {
 
   renderDashboard(ing, gastos, libre) {
     const tasa = ing ? ((libre / ing) * 100).toFixed(1) : 0;
-    const color = libre >= 0 ? "#00b894" : "#ff6b6b";
+    const color = libre >= 0 ? "#10b981" : "#ef4444";
     const el = document.getElementById("analisisMensual");
     if (!el) return;
-    el.innerHTML = `<div class="item"><b style="color:${color}">${fmt(
-      libre
-    )}</b> de balance — Ahorro ${tasa}%</div>`;
+    el.innerHTML = `<b style="color:${color}">${fmt(libre)}</b> de balance — Ahorro ${tasa}%`;
   }
 
   renderMetas(ahorros) {
@@ -488,18 +457,16 @@ class Finanzas {
     const rows = meses
       .map((m) => {
         const d = this.data[m];
-        const ing = d.ingresos
-          .filter((x) => x.pagadoMes !== false)
-          .reduce((s, x) => s + (x.monto || 0), 0);
+        const ing = d.ingresos.reduce((s, x) => s + (Number(x.monto) || 0), 0);
         const gas =
-          d.gastosFijos.filter((x) => x.pagadoMes !== true).reduce((s, x) => s + (x.monto || 0), 0) +
-          d.tarjetas.filter((x) => x.pagadoMes !== true).reduce((s, x) => s + (x.cuotaMensual || 0), 0) +
-          d.creditos.filter((x) => x.pagadoMes !== true).reduce((s, x) => s + (x.cuotaMensual || 0), 0) +
-          d.gastosCompras.filter((x) => x.pagadoMes !== true).reduce((s, x) => s + (x.monto || 0), 0);
+          d.gastosFijos.reduce((s, x) => s + (Number(x.monto) || 0), 0) +
+          d.tarjetas.reduce((s, x) => s + (Number(x.cuotaMensual) || 0), 0) +
+          d.creditos.reduce((s, x) => s + (Number(x.cuotaMensual) || 0), 0) +
+          d.gastosCompras.reduce((s, x) => s + (Number(x.monto) || 0), 0);
         const bal = ing - gas;
         const p = ing ? ((bal / ing) * 100).toFixed(1) : 0;
         return `<tr><td>${m}</td><td>${fmt(ing)}</td><td>${fmt(gas)}</td>
-        <td style="color:${bal >= 0 ? "#00b894" : "#ff6b6b"}">${fmt(bal)}</td><td>${p}%</td></tr>`;
+        <td style="color:${bal >= 0 ? "#10b981" : "#ef4444"}">${fmt(bal)}</td><td>${p}%</td></tr>`;
       })
       .join("");
     el.innerHTML = `<div style="overflow:auto">
@@ -527,8 +494,7 @@ class Finanzas {
   openForm(tipo, item = null) {
     const f = (name, type, label, value, extra = "") =>
       `<div class="field"><label>${label}</label><input type="${type}" id="f_${name}" value="${value ?? ""}" ${extra}></div>`;
-    let title = "Formulario",
-      fields = "";
+    let title = "Formulario", fields = "";
 
     if (tipo === "ingreso") {
       title = "Nuevo Ingreso";
@@ -565,13 +531,7 @@ class Finanzas {
         f("montoTotal", "number", "Monto total", "", "step='1' min='1'") +
         f("numeroCuotas", "number", "Cuotas", "", "step='1' min='1'") +
         f("cuotasPagadas", "number", "Pagadas", "0", "step='1' min='0'") +
-        f(
-          "tasa",
-          "text",
-          "Tasa mensual % (coma, ej: 1,85)",
-          "1,85",
-          "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'"
-        );
+        f("tasa", "text", "Tasa mensual % (coma, ej: 1,85)", "1,85", "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
     } else if (tipo === "credito") {
       title = "Nuevo Crédito";
       fields =
@@ -579,27 +539,9 @@ class Finanzas {
         f("montoTotal", "number", "Monto total", "", "step='1' min='1'") +
         f("numeroCuotas", "number", "Cuotas", "", "step='1' min='1'") +
         f("cuotasPagadas", "number", "Pagadas", "0", "step='1' min='0'") +
-        f(
-          "tasa",
-          "text",
-          "Tasa mensual % (coma, ej: 1,85)",
-          "1,85",
-          "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'"
-        ) +
-        f(
-          "aval",
-          "text",
-          "Aval % sobre capital (coma, ej: 12,00)",
-          "0,00",
-          "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'"
-        ) +
-        f(
-          "ivaAval",
-          "text",
-          "IVA del aval % (coma, ej: 19,00)",
-          "0,00",
-          "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'"
-        );
+        f("tasa", "text", "Tasa mensual % (coma, ej: 1,85)", "1,85", "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'") +
+        f("aval", "text", "Aval % sobre capital (coma, ej: 12,00)", "0,00", "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'") +
+        f("ivaAval", "text", "IVA del aval % (coma, ej: 19,00)", "0,00", "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
     }
 
     this.showModal(title, fields, (vals) => {
@@ -608,239 +550,120 @@ class Finanzas {
       const pct = (x) => this.rateFromInput(x);
 
       if (tipo === "ingreso") {
-        d.ingresos.push({
-          id: this.uid(),
-          nombre: vals.nombre,
-          monto: n(vals.monto),
-          categoria: vals.categoria,
-          fecha: vals.fecha,
-          pagadoMes: true,
-        });
+        d.ingresos.push({ id: this.uid(), nombre: vals.nombre, monto: n(vals.monto), categoria: vals.categoria, fecha: vals.fecha, pagadoMes: true });
       } else if (tipo === "fijo") {
-        d.gastosFijos.push({
-          id: this.uid(),
-          nombre: vals.nombre,
-          monto: n(vals.monto),
-          categoria: vals.categoria,
-          fecha: vals.fecha,
-          pagadoMes: false,
-        });
+        d.gastosFijos.push({ id: this.uid(), nombre: vals.nombre, monto: n(vals.monto), categoria: vals.categoria, fecha: vals.fecha, pagadoMes: false });
       } else if (tipo === "compra") {
-        d.gastosCompras.push({
-          id: this.uid(),
-          nombre: vals.nombre,
-          monto: n(vals.monto),
-          categoria: vals.categoria,
-          fecha: vals.fecha,
-          pagadoMes: false,
-        });
+        d.gastosCompras.push({ id: this.uid(), nombre: vals.nombre, monto: n(vals.monto), categoria: vals.categoria, fecha: vals.fecha, pagadoMes: false });
       } else if (tipo === "ahorro") {
-        d.ahorros.push({
-          id: this.uid(),
-          nombre: vals.nombre,
-          meta: n(vals.meta),
-          actual: n(vals.actual),
-          fecha: vals.fecha,
-        });
+        d.ahorros.push({ id: this.uid(), nombre: vals.nombre, meta: n(vals.meta), actual: n(vals.actual), fecha: vals.fecha });
       } else if (tipo === "tarjeta") {
         const tasa = pct(vals.tasa);
-        if (!(tasa > 0 && tasa <= 0.05)) {
-          this.toast("Tasa inválida (usa coma, ≤5%)");
-          return;
-        }
-        const M = n(vals.montoTotal),
-          cu = parseInt(vals.numeroCuotas || 0),
-          pag = parseInt(vals.cuotasPagadas || 0);
+        if (!(tasa > 0 && tasa <= 0.05)) { this.toast("Tasa inválida (usa coma, ≤5%)"); return; }
+        const M = n(vals.montoTotal), cu = parseInt(vals.numeroCuotas || 0), pag = parseInt(vals.cuotasPagadas || 0);
         const cuota = this.cuota(M, tasa, cu);
-        d.tarjetas.push({
-          id: this.uid(),
-          nombre: vals.nombre,
-          montoTotal: M,
-          numeroCuotas: cu,
-          cuotasPagadas: pag,
-          tasaMensual: tasa,
-          cuotaMensual: cuota,
-          fecha: `${this.mes}-01`,
-          pagadoMes: false,
-        });
+        d.tarjetas.push({ id: this.uid(), nombre: vals.nombre, montoTotal: M, numeroCuotas: cu, cuotasPagadas: pag, tasaMensual: tasa, cuotaMensual: cuota, fecha: `${this.mes}-01`, pagadoMes: false });
       } else if (tipo === "credito") {
-        const tasa = pct(vals.tasa),
-          aval = pct(vals.aval || "0"),
-          iva = pct(vals.ivaAval || "0");
-        if (!(tasa > 0 && tasa <= 0.05)) {
-          this.toast("Tasa inválida (usa coma, ≤5%)");
-          return;
-        }
-        if (aval < 0 || aval > 0.3) {
-          this.toast("Aval fuera de rango (0%–30%)");
-          return;
-        }
-        if (iva < 0 || iva > 0.3) {
-          this.toast("IVA aval fuera de rango (0%–30%)");
-          return;
-        }
-        const M = n(vals.montoTotal),
-          cu = parseInt(vals.numeroCuotas || 0),
-          pag = parseInt(vals.cuotasPagadas || 0);
+        const tasa = pct(vals.tasa), aval = pct(vals.aval || "0"), iva = pct(vals.ivaAval || "0");
+        if (!(tasa > 0 && tasa <= 0.05)) { this.toast("Tasa inválida (usa coma, ≤5%)"); return; }
+        if (aval < 0 || aval > 0.3) { this.toast("Aval fuera de rango (0%–30%)"); return; }
+        if (iva < 0 || iva > 0.3) { this.toast("IVA aval fuera de rango (0%–30%)"); return; }
+        const M = n(vals.montoTotal), cu = parseInt(vals.numeroCuotas || 0), pag = parseInt(vals.cuotasPagadas || 0);
         const cuota = this.cuota(M, tasa, cu, aval, iva);
-        d.creditos.push({
-          id: this.uid(),
-          nombre: vals.nombre,
-          montoTotal: M,
-          numeroCuotas: cu,
-          cuotasPagadas: pag,
-          tasaMensual: tasa,
-          avalPct: aval,
-          ivaAvalPct: iva,
-          cuotaMensual: cuota,
-          fecha: `${this.mes}-01`,
-          pagadoMes: false,
-        });
+        d.creditos.push({ id: this.uid(), nombre: vals.nombre, montoTotal: M, numeroCuotas: cu, cuotasPagadas: pag, tasaMensual: tasa, avalPct: aval, ivaAvalPct: iva, cuotaMensual: cuota, fecha: `${this.mes}-01`, pagadoMes: false });
       }
-      this.save();
-      this.renderAll();
-      this.toast("Guardado");
+      this.save(); this.renderAll(); this.toast("Guardado");
     });
   }
 
   edit(key, id) {
-    const list = this.mesData[key];
-    const it = list.find((x) => x.id === id);
-    if (!it) return;
+    const list = this.mesData[key]; const it = list.find((x) => x.id === id); if (!it) return;
     const isDeuda = key === "tarjetas" || key === "creditos";
 
     const f = (name, type, label, value, extra = "") =>
       `<div class="field"><label>${label}</label><input type="${type}" id="f_${name}" value="${value ?? ""}" ${extra}></div>`;
-    let title = "Editar",
-      fields = "";
+    let title = "Editar", fields = "";
 
     if (!isDeuda && key !== "ahorros") {
-      fields =
-        f("nombre", "text", "Nombre", it.nombre) +
-        f("monto", "number", "Monto", it.monto, "step='1' min='0'") +
-        f("categoria", "text", "Categoría", it.categoria || "") +
-        f("fecha", "date", "Fecha", it.fecha || `${this.mes}-01`);
+      fields = f("nombre","text","Nombre",it.nombre) + f("monto","number","Monto",it.monto,"step='1' min='0'") + f("categoria","text","Categoría",it.categoria||"") + f("fecha","date","Fecha",it.fecha||`${this.mes}-01`);
     } else if (key === "ahorros") {
       title = "Editar Meta";
-      fields =
-        f("nombre", "text", "Nombre", it.nombre) +
-        f("meta", "number", "Meta", it.meta, "step='1' min='0'") +
-        f("actual", "number", "Actual", it.actual, "step='1' min='0'");
+      fields = f("nombre","text","Nombre",it.nombre) + f("meta","number","Meta",it.meta,"step='1' min='0'") + f("actual","number","Actual",it.actual,"step='1' min='0'");
     } else if (key === "tarjetas") {
       title = "Editar Tarjeta";
       fields =
-        f("nombre", "text", "Nombre", it.nombre) +
-        f("montoTotal", "number", "Monto total", it.montoTotal, "step='1' min='1'") +
-        f("numeroCuotas", "number", "Cuotas", it.numeroCuotas, "step='1' min='1'") +
-        f("cuotasPagadas", "number", "Pagadas", it.cuotasPagadas || 0, "step='1' min='0'") +
-        f(
-          "tasa",
-          "text",
-          "Tasa mensual % (coma)",
-          formatPctComma(it.tasaMensual),
-          "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'"
-        );
+        f("nombre","text","Nombre",it.nombre) +
+        f("montoTotal","number","Monto total",it.montoTotal,"step='1' min='1'") +
+        f("numeroCuotas","number","Cuotas",it.numeroCuotas,"step='1' min='1'") +
+        f("cuotasPagadas","number","Pagadas",it.cuotasPagadas||0,"step='1' min='0'") +
+        f("tasa","text","Tasa mensual % (coma)",formatPctComma(it.tasaMensual),"inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
     } else if (key === "creditos") {
       title = "Editar Crédito";
       fields =
-        f("nombre", "text", "Nombre", it.nombre) +
-        f("montoTotal", "number", "Monto total", it.montoTotal, "step='1' min='1'") +
-        f("numeroCuotas", "number", "Cuotas", it.numeroCuotas, "step='1' min='1'") +
-        f("cuotasPagadas", "number", "Pagadas", it.cuotasPagadas || 0, "step='1' min='0'") +
-        f(
-          "tasa",
-          "text",
-          "Tasa mensual % (coma)",
-          formatPctComma(it.tasaMensual),
-          "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'"
-        ) +
-        f(
-          "aval",
-          "text",
-          "Aval %",
-          it.avalPct ? formatPctComma(it.avalPct) : "0,00",
-          "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'"
-        ) +
-        f(
-          "ivaAval",
-          "text",
-          "IVA aval %",
-          it.ivaAvalPct ? formatPctComma(it.ivaAvalPct) : "0,00",
-          "inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'"
-        );
+        f("nombre","text","Nombre",it.nombre) +
+        f("montoTotal","number","Monto total",it.montoTotal,"step='1' min='1'") +
+        f("numeroCuotas","number","Cuotas",it.numeroCuotas,"step='1' min='1'") +
+        f("cuotasPagadas","number","Pagadas",it.cuotasPagadas||0,"step='1' min='0'") +
+        f("tasa","text","Tasa mensual % (coma)",formatPctComma(it.tasaMensual),"inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'") +
+        f("aval","text","Aval %",it.avalPct?formatPctComma(it.avalPct):"0,00","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'") +
+        f("ivaAval","text","IVA aval %",it.ivaAvalPct?formatPctComma(it.ivaAvalPct):"0,00","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
     }
 
     this.showModal(title, fields, (vals) => {
-      const n = (x) => Number(x || 0),
-        pct = (x) => this.rateFromInput(x);
-
+      const n = (x) => Number(x || 0), pct = (x) => this.rateFromInput(x);
       if (!isDeuda && key !== "ahorros") {
-        Object.assign(it, {
-          nombre: vals.nombre,
-          monto: n(vals.monto),
-          categoria: vals.categoria,
-          fecha: vals.fecha,
-        });
+        Object.assign(it,{nombre:vals.nombre,monto:n(vals.monto),categoria:vals.categoria,fecha:vals.fecha});
       } else if (key === "ahorros") {
-        Object.assign(it, { nombre: vals.nombre, meta: n(vals.meta), actual: n(vals.actual) });
+        Object.assign(it,{nombre:vals.nombre,meta:n(vals.meta),actual:n(vals.actual)});
       } else if (key === "tarjetas") {
-        const tasa = pct(vals.tasa);
-        if (!(tasa > 0 && tasa <= 0.05)) {
-          this.toast("Tasa inválida (≤5%)");
-          return;
-        }
-        const M = n(vals.montoTotal),
-          cu = parseInt(vals.numeroCuotas || 0),
-          pag = parseInt(vals.cuotasPagadas || 0);
-        Object.assign(it, {
-          nombre: vals.nombre,
-          montoTotal: M,
-          numeroCuotas: cu,
-          cuotasPagadas: pag,
-          tasaMensual: tasa,
-          cuotaMensual: this.cuota(M, tasa, cu),
-        });
+        const tasa=pct(vals.tasa); if(!(tasa>0 && tasa<=0.05)){ this.toast("Tasa inválida (≤5%)"); return; }
+        const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
+        Object.assign(it,{nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,cuotaMensual:this.cuota(M,tasa,cu)});
       } else if (key === "creditos") {
-        const tasa = pct(vals.tasa),
-          aval = pct(vals.aval || "0"),
-          iva = pct(vals.ivaAval || "0");
-        if (!(tasa > 0 && tasa <= 0.05)) {
-          this.toast("Tasa inválida (≤5%)");
-          return;
-        }
-        if (aval < 0 || aval > 0.3) {
-          this.toast("Aval fuera de rango (0%–30%)");
-          return;
-        }
-        if (iva < 0 || iva > 0.3) {
-          this.toast("IVA aval fuera de rango (0%–30%)");
-          return;
-        }
-        const M = n(vals.montoTotal),
-          cu = parseInt(vals.numeroCuotas || 0),
-          pag = parseInt(vals.cuotasPagadas || 0);
-        Object.assign(it, {
-          nombre: vals.nombre,
-          montoTotal: M,
-          numeroCuotas: cu,
-          cuotasPagadas: pag,
-          tasaMensual: tasa,
-          avalPct: aval,
-          ivaAvalPct: iva,
-          cuotaMensual: this.cuota(M, tasa, cu, aval, iva),
-        });
+        const tasa=pct(vals.tasa), aval=pct(vals.aval||"0"), iva=pct(vals.ivaAval||"0");
+        if(!(tasa>0 && tasa<=0.05)){ this.toast("Tasa inválida (≤5%)"); return; }
+        if(aval<0||aval>0.3){ this.toast("Aval fuera de rango (0%–30%)"); return; }
+        if(iva<0||iva>0.3){ this.toast("IVA aval fuera de rango (0%–30%)"); return; }
+        const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
+        Object.assign(it,{nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,avalPct:aval,ivaAvalPct:iva,cuotaMensual:this.cuota(M,tasa,cu,aval,iva)});
       }
-      this.save();
-      this.renderAll();
-      this.toast("Actualizado");
+      this.save(); this.renderAll(); this.toast("Actualizado");
     });
   }
 
+  /** Marca/Desmarca pagado; ajusta cuotasPagadas cuando aplica */
   togglePagado(key, id) {
     const list = this.mesData[key];
     const it = list.find((x) => x.id === id);
     if (!it) return;
-    it.pagadoMes = !it.pagadoMes;
+
+    const wasPaid = it.pagadoMes === true;
+    it.pagadoMes = !wasPaid;
+
+    // Solo para deudas
+    if (key === "tarjetas" || key === "creditos") {
+      let cuo = parseInt(it.cuotasPagadas || 0);
+      const nCuotas = parseInt(it.numeroCuotas || 0);
+
+      if (!wasPaid) {
+        cuo = Math.min(nCuotas, cuo + 1); // marcado pagado => +1
+      } else {
+        cuo = Math.max(0, cuo - 1);       // desmarcado => -1
+      }
+      it.cuotasPagadas = cuo;
+
+      // Recalcular cuota (si terminó, 0)
+      const tasa = Number(it.tasaMensual || 0);
+      const M = Number(it.montoTotal || 0);
+      if (key === "tarjetas") {
+        it.cuotaMensual = cuo >= nCuotas ? 0 : this.cuota(M, tasa, nCuotas);
+      } else {
+        const aval = Number(it.avalPct || 0);
+        const iva = Number(it.ivaAvalPct || 0);
+        it.cuotaMensual = cuo >= nCuotas ? 0 : this.cuota(M, tasa, nCuotas, aval, iva);
+      }
+    }
+
     this.save();
     this.renderAll();
     this.toast(it.pagadoMes ? "Marcado como pagado" : "Marcado como pendiente");
@@ -849,9 +672,7 @@ class Finanzas {
   del(key, id) {
     if (!confirm("¿Eliminar registro?")) return;
     this.data[this.mes][key] = (this.data[this.mes][key] || []).filter((x) => x.id !== id);
-    this.save();
-    this.renderAll();
-    this.toast("Eliminado");
+    this.save(); this.renderAll(); this.toast("Eliminado");
   }
 
   addAhorroMonto(id) {
@@ -861,30 +682,28 @@ class Finanzas {
     const n = Number(m);
     if (n > 0) {
       a.actual += n;
-      this.save();
-      this.renderAll();
-      this.toast("Ahorro agregado");
+      this.save(); this.renderAll(); this.toast("Ahorro agregado");
     }
   }
 
   /* ====== Modal ====== */
   showModal(title, innerHtml, onSubmit) {
-    const modal = this.btns.modal,
-      form = this.btns.modalForm,
-      titleEl = this.btns.modalTitle;
+    const modal = this.btns.modal, form = this.btns.modalForm, titleEl = this.btns.modalTitle;
     titleEl.textContent = title;
     form.innerHTML =
       innerHtml +
-      `
-      <div class="actions">
-        <button type="submit" class="btn btn-primary">Guardar</button>
+      `<div class="actions">
+        <button type="submit" class="btn primary">Guardar</button>
         <button type="button" class="btn" id="cancelModal">Cancelar</button>
       </div>`;
-    modal.classList.remove("hidden");
-    modal.setAttribute("aria-hidden", "false");
+    if (modal) {
+      modal.classList.remove("hidden");
+      modal.setAttribute("aria-hidden", "false");
+    }
 
     const cancel = () => this.closeModal();
-    document.getElementById("cancelModal").onclick = cancel;
+    const cancelBtn = document.getElementById("cancelModal");
+    if (cancelBtn) cancelBtn.onclick = cancel;
 
     form.onsubmit = (e) => {
       e.preventDefault();
@@ -894,13 +713,12 @@ class Finanzas {
         vals[id] = inp.value;
       });
       this.closeModal();
-      setTimeout(() => onSubmit(vals), 0); // asegura cierre del modal antes de recalcular
+      setTimeout(() => onSubmit(vals), 0);
     };
   }
 
   closeModal() {
-    const modal = this.btns.modal,
-      form = this.btns.modalForm;
+    const modal = this.btns.modal, form = this.btns.modalForm;
     if (modal) modal.classList.add("hidden");
     if (modal) modal.setAttribute("aria-hidden", "true");
     if (form) form.innerHTML = "";
