@@ -1,42 +1,32 @@
-// Simple SW cache-first para PWA en GitHub Pages
-const VERSION = "v3.0.0";
-const APP_SHELL = [
+// SW mínimo para PWA estática
+const CACHE = "finanzas-cache-v1";
+const ASSETS = [
   "./",
   "./index.html",
-  "./style.app.css",
+  "./styles.css",
   "./app.app.js",
-  "./manifest.json",
-  "./icon-192.png",
-  "./icon-512.png"
+  "./manifest.json"
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(VERSION).then((c) => c.addAll(APP_SHELL))
-  );
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
 });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== VERSION ? caches.delete(k) : null)))
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     )
   );
 });
 
 self.addEventListener("fetch", (e) => {
-  const { request } = e;
-  if (request.method !== "GET") return;
+  const req = e.request;
+  if (req.method !== "GET") return;
   e.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(VERSION).then((c) => c.put(request, copy));
-          return res;
-        })
-        .catch(() => caches.match("./index.html"));
-    })
+    caches.match(req).then(cacheRes => cacheRes || fetch(req).then((netRes) => {
+      // opcional: cache dinámico simple
+      return netRes;
+    }))
   );
 });
