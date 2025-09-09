@@ -54,6 +54,7 @@ class Finanzas {
       addAhorro: document.getElementById("addAhorro"),
       export: document.getElementById("exportBtn"),
       reset: document.getElementById("resetBtn"),
+      closeMonth: document.getElementById("closeMonthBtn"),
       modal: document.getElementById("modal"),
       modalForm: document.getElementById("modalForm"),
       modalTitle: document.getElementById("modalTitle"),
@@ -91,6 +92,7 @@ class Finanzas {
     if (this.btns.addAhorro) this.btns.addAhorro.onclick = () => this.openForm("ahorro");
     if (this.btns.export) this.btns.export.onclick = () => this.export();
     if (this.btns.reset) this.btns.reset.onclick = () => this.reset();
+    if (this.btns.closeMonth) this.btns.closeMonth.onclick = () => this.closeMonth();
     if (this.btns.closeModal) this.btns.closeModal.onclick = () => this.closeModal();
 
     document.body.addEventListener("click", (ev) => {
@@ -121,6 +123,14 @@ class Finanzas {
     this.panels.forEach((p) =>
       p.classList.toggle("hidden", !(p.id === name || p.dataset.tab === name))
     );
+  }
+
+  /* ====== Helpers de fecha ====== */
+  nextYM(ym) {
+    const [y, m] = ym.split("-").map(Number);
+    let ny = y, nm = m + 1;
+    if (nm > 12) { nm = 1; ny++; }
+    return `${ny}-${String(nm).padStart(2, "0")}`;
   }
 
   /* ====== Storage & datos ====== */
@@ -186,7 +196,7 @@ class Finanzas {
       ["ingresos", "gastosFijos", "tarjetas", "creditos", "gastosCompras", "ahorros"].forEach((k) => {
         copy[k] = (copy[k] || []).map((it) => {
           const n = { ...it, id: this.uid(), fecha: `${key}-01` };
-          if ("pagadoMes" in n) n.pagadoMes = false; // nuevo mes => marcar pendiente
+          if ("pagadoMes" in n) n.pagadoMes = false; // nuevo mes => pendiente
           return n;
         });
       });
@@ -293,7 +303,7 @@ class Finanzas {
     this.renderList("listaAhorros", d.ahorros, (i) => this.rowAhorro(i, "ahorros"));
 
     // === Totales ===
-    const ALL_EXPENSES = true; // <- cámbialo a false si quieres restar solo lo pendiente del mes
+    const ALL_EXPENSES = true; // <- pon false si quieres restar solo lo pendiente del mes
 
     const totalIng = d.ingresos.reduce((s, x) => s + (Number(x.monto) || 0), 0);
 
@@ -667,6 +677,116 @@ class Finanzas {
     this.save();
     this.renderAll();
     this.toast(it.pagadoMes ? "Marcado como pagado" : "Marcado como pendiente");
+  }
+
+  /* ====== Cerrar mes ====== */
+  closeMonth() {
+    const cur = this.mes;
+    const next = this.nextYM(cur);
+    const src = this.data[cur];
+
+    if (!src) { this.toast("Sin datos del mes actual"); return; }
+
+    // Construimos el destino (preferimos no arrastrar COMPRAS al siguiente mes)
+    const dest = {
+      ingresos: [],
+      gastosFijos: [],
+      tarjetas: [],
+      creditos: [],
+      gastosCompras: [], // no se copian las compras al mes nuevo
+      ahorros: JSON.parse(JSON.stringify(src.ahorros || [])),
+    };
+
+    // Ingresos y fijos se copian al siguiente mes, como pendientes
+    (src.ingresos || []).forEach(it => {
+      dest.ingresos.push({
+        id: this.uid(),
+        nombre: it.nombre,
+        monto: Number(it.monto) || 0,
+        categoria: it.categoria,
+        fecha: `${next}-01`,
+        pagadoMes: false
+      });
+    });
+    (src.gastosFijos || []).forEach(it => {
+      dest.gastosFijos.push({
+        id: this.uid(),
+        nombre: it.nombre,
+        monto: Number(it.monto) || 0,
+        categoria: it.categoria,
+        fecha: `${next}-01`,
+        pagadoMes: false
+      });
+    });
+
+    // Tarjetas: si estaban pagadas este mes => avanzamos una cuota
+    (src.tarjetas || []).forEach(it => {
+      const nCuotas = parseInt(it.numeroCuotas || 0);
+      let pagadas = parseInt(it.cuotasPagadas || 0);
+      if (it.pagadoMes === true) pagadas = Math.min(nCuotas, pagadas + 1);
+
+      const tasa = Number(it.tasaMensual || 0);
+      const M = Number(it.montoTotal || 0);
+      const cuota = pagadas >= nCuotas ? 0 : this.cuota(M, tasa, nCuotas);
+
+      dest.tarjetas.push({
+        id: this.uid(),
+        nombre: it.nombre,
+        montoTotal: M,
+        numeroCuotas: nCuotas,
+        cuotasPagadas: pagadas,
+        tasaMensual: tasa,
+        cuotaMensual: cuota,
+        fecha: `${next}-01`,
+        pagadoMes: false
+      });
+    });
+
+    // Créditos: igual que tarjetas (considerando aval/IVA)
+    (src.creditos || []).forEach(it => {
+      const nCuotas = parseInt(it.numeroCuotas || 0);
+      let pagadas = parseInt(it.cuotasPagadas || 0);
+      if (it.pagadoMes === true) pagadas = Math.min(nCuotas, pagadas + 1);
+
+      const tasa = Number(it.tasaMensual || 0);
+      const M = Number(it.montoTotal || 0);
+      const aval = Number(it.avalPct || 0);
+      const iva = Number(it.ivaAvalPct || 0);
+      const cuota = pagadas >= nCuotas ? 0 : this.cuota(M, tasa, nCuotas, aval, iva);
+
+      dest.creditos.push({
+        id: this.uid(),
+        nombre: it.nombre,
+        montoTotal: M,
+        numeroCuotas: nCuotas,
+        cuotasPagadas: pagadas,
+        tasaMensual: tasa,
+        avalPct: aval,
+        ivaAvalPct: iva,
+        cuotaMensual: cuota,
+        fecha: `${next}-01`,
+        pagadoMes: false
+      });
+    });
+
+    // Ahorros: solo se copian tal cual (no tienen "pagadoMes")
+    dest.ahorros.forEach(a => { a.id = this.uid(); a.fecha = `${next}-01`; });
+
+    // Si ya existe el mes siguiente, confirmamos sobre-escritura
+    if (this.data[next]) {
+      const ok = confirm(`El mes ${next} ya existe. ¿Reemplazar su contenido con el cierre de ${cur}?`);
+      if (!ok) { this.toast("Cierre cancelado"); return; }
+    }
+
+    this.data[next] = dest;
+    this.save();
+
+    // Cambiar selector al nuevo mes y refrescar
+    this.mes = next;
+    this.buildMonths();
+    if (this.sel) this.sel.value = next;
+    this.renderAll();
+    this.toast(`Mes cerrado. Avanzaste a ${next}`);
   }
 
   del(key, id) {
