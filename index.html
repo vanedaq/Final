@@ -1,110 +1,168 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>💰 Organizador Financiero</title>
 
   <!-- PWA -->
-  <meta name="theme-color" content="#6366f1" />
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-  <link rel="apple-touch-icon" href="icon-192.png" />
+  <meta name="theme-color" content="#667eea" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Finanzas" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23667eea'/%3E%3Ctext x='50' y='70' font-size='60' text-anchor='middle' fill='white'%3E💰%3C/text%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%23667eea' rx='20'/%3E%3Ctext x='90' y='120' font-size='80' text-anchor='middle' fill='white'%3E💰%3C/text%3E%3C/svg%3E" />
+  <meta name="description" content="Organizador financiero personal para controlar ingresos, gastos, créditos y tarjetas" />
 
-  <link rel="stylesheet" href="style.app.css" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="app">
     <header class="header">
-      <div class="brand">
-        <span class="logo">💰</span>
-        <h1>Organizador Financiero</h1>
+      <div class="header-top">
+        <div>
+          <h1>💰 Organizador Financiero</h1>
+          <p>Control inteligente de tus finanzas</p>
+        </div>
+        <div class="month-wrap">
+          <select id="mesSelector" class="month-selector"></select>
+        </div>
       </div>
-      <div class="actions-row">
-        <select id="mesSelector" class="month-selector"></select>
-        <button id="exportBtn" class="btn btn-primary">📥 Exportar</button>
-        <button id="resetBtn" class="btn btn-danger">🧹 Reset</button>
+
+      <div class="summary">
+        <div class="card ingresos">
+          <h3>💵 Ingresos</h3>
+          <div id="sumIngresos">$0</div>
+        </div>
+        <div class="card fijos">
+          <h3>🏠 Fijos</h3>
+          <div id="sumFijos">$0</div>
+        </div>
+        <div class="card tarjetas">
+          <h3>💳 Tarjetas</h3>
+          <div id="sumTarjetas">$0</div>
+        </div>
+        <div class="card creditos">
+          <h3>🏦 Créditos</h3>
+          <div id="sumCreditos">$0</div>
+        </div>
+        <div class="card compras">
+          <h3>🛒 Compras</h3>
+          <div id="sumCompras">$0</div>
+        </div>
+        <div class="card ahorros">
+          <h3>💎 Ahorros</h3>
+          <div id="sumAhorros">$0</div>
+        </div>
+        <div class="card total">
+          <h3>📊 Total Gastos</h3>
+          <div id="sumGastos">$0</div>
+        </div>
+        <div class="card libre">
+          <h3>💰 Disponible</h3>
+          <div id="sumLibre">$0</div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button id="tabPrev" class="tab-nav">‹</button>
+        <div class="tabs-scroll">
+          <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
+          <button class="tab" data-tab="ingresos">💵 Ingresos</button>
+          <button class="tab" data-tab="fijos">🏠 Fijos</button>
+          <button class="tab" data-tab="tarjetas">💳 Tarjetas</button>
+          <button class="tab" data-tab="creditos">🏦 Créditos</button>
+          <button class="tab" data-tab="compras">🛒 Compras</button>
+          <button class="tab" data-tab="ahorros">💎 Ahorros</button>
+          <button class="tab" data-tab="consejos">💡 Consejos</button>
+        </div>
+        <button id="tabNext" class="tab-nav">›</button>
       </div>
     </header>
 
-    <!-- ===== Summary ===== -->
-    <section class="summary">
-      <div class="card summary-card ingresos"><h3>Ingresos</h3><div id="sumIngresos">$0</div></div>
-      <div class="card summary-card fijos"><h3>Fijos</h3><div id="sumFijos">$0</div></div>
-      <div class="card summary-card tarjetas"><h3>Tarjetas</h3><div id="sumTarjetas">$0</div></div>
-      <div class="card summary-card creditos"><h3>Créditos</h3><div id="sumCreditos">$0</div></div>
-      <div class="card summary-card compras"><h3>Compras</h3><div id="sumCompras">$0</div></div>
-      <div class="card summary-card ahorros"><h3>Ahorros</h3><div id="sumAhorros">$0</div></div>
-      <div class="card summary-card total"><h3>Total Gastos</h3><div id="sumGastos">$0</div></div>
-      <div class="card summary-card libre"><h3>Disponible</h3><div id="sumLibre">$0</div></div>
-    </section>
-
-    <!-- ===== Tabs ===== -->
-    <div class="tabs-nav">
-      <button id="tabPrev" type="button">←</button>
-      <button id="tabNext" type="button">→</button>
-    </div>
-    <nav class="tabs">
-      <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
-      <button class="tab" data-tab="ingresos">💵 Ingresos</button>
-      <button class="tab" data-tab="fijos">🏠 Fijos</button>
-      <button class="tab" data-tab="tarjetas">💳 Tarjetas</button>
-      <button class="tab" data-tab="creditos">🏦 Créditos</button>
-      <button class="tab" data-tab="compras">🛒 Compras</button>
-      <button class="tab" data-tab="ahorros">💎 Ahorros</button>
-      <button class="tab" data-tab="consejos">💡 Consejos</button>
-    </nav>
-
-    <!-- ===== Content ===== -->
     <main class="content">
       <!-- Dashboard -->
       <section id="dashboard" class="panel">
-        <div class="card"><h2>📈 Análisis del Mes</h2><div id="analisisMensual"></div></div>
-        <div class="card"><h2>🎯 Metas de Ahorro</h2><div id="metasAhorro"></div></div>
-        <div class="card"><h2>📊 Historial</h2><div id="tablaHistorial"></div></div>
+        <div class="section-header">
+          <h2>📊 Dashboard</h2>
+          <div class="actions-right">
+            <button class="btn" id="exportBtn">📥 Exportar</button>
+            <button class="btn danger" id="resetBtn">🗑️ Reset</button>
+          </div>
+        </div>
+        <div class="card-block">
+          <div class="item" id="analisisMensual">—</div>
+          <div class="item">
+            <h3>🎯 Metas de ahorro</h3>
+            <div id="metasAhorro"></div>
+          </div>
+          <div class="item">
+            <h3>📜 Historial</h3>
+            <div id="tablaHistorial"></div>
+          </div>
+        </div>
       </section>
 
       <!-- Ingresos -->
       <section id="ingresos" class="panel hidden">
-        <div class="panel-head"><h2>💵 Ingresos</h2><button id="addIngreso" class="btn btn-success">+ Agregar</button></div>
+        <div class="section-header">
+          <h2>💵 Ingresos</h2>
+          <button class="btn primary" id="addIngreso">+ Agregar</button>
+        </div>
         <div id="listaIngresos"></div>
       </section>
 
       <!-- Fijos -->
       <section id="fijos" class="panel hidden">
-        <div class="panel-head"><h2>🏠 Gastos Fijos</h2><button id="addFijo" class="btn btn-success">+ Agregar</button></div>
+        <div class="section-header">
+          <h2>🏠 Gastos Fijos</h2>
+          <button class="btn primary" id="addFijo">+ Agregar</button>
+        </div>
         <div id="listaFijos"></div>
       </section>
 
       <!-- Tarjetas -->
       <section id="tarjetas" class="panel hidden">
-        <div class="panel-head"><h2>💳 Tarjetas</h2><button id="addTarjeta" class="btn btn-success">+ Agregar</button></div>
+        <div class="section-header">
+          <h2>💳 Tarjetas</h2>
+          <button class="btn warn" id="addTarjeta">+ Agregar tarjeta</button>
+        </div>
         <div id="listaTarjetas"></div>
       </section>
 
       <!-- Créditos -->
       <section id="creditos" class="panel hidden">
-        <div class="panel-head"><h2>🏦 Créditos Bancarios</h2><button id="addCredito" class="btn btn-success">+ Agregar</button></div>
+        <div class="section-header">
+          <h2>🏦 Créditos</h2>
+          <button class="btn primary" id="addCredito">+ Agregar crédito</button>
+        </div>
         <div id="listaCreditos"></div>
       </section>
 
       <!-- Compras -->
       <section id="compras" class="panel hidden">
-        <div class="panel-head"><h2>🛒 Compras</h2><button id="addCompra" class="btn btn-success">+ Agregar</button></div>
+        <div class="section-header">
+          <h2>🛒 Compras</h2>
+          <button class="btn primary" id="addCompra">+ Agregar</button>
+        </div>
         <div id="listaCompras"></div>
       </section>
 
       <!-- Ahorros -->
       <section id="ahorros" class="panel hidden">
-        <div class="panel-head"><h2>💎 Metas de Ahorro</h2><button id="addAhorro" class="btn btn-success">+ Nueva Meta</button></div>
+        <div class="section-header">
+          <h2>💎 Ahorros</h2>
+          <button class="btn success" id="addAhorro">+ Nueva meta</button>
+        </div>
         <div id="listaAhorros"></div>
       </section>
 
       <!-- Consejos -->
       <section id="consejos" class="panel hidden">
-        <h2>💡 Consejos Financieros</h2>
+        <div class="section-header">
+          <h2>💡 Consejos</h2>
+        </div>
         <div id="recomendaciones"></div>
       </section>
     </main>
@@ -112,16 +170,17 @@
 
   <!-- Modal -->
   <div id="modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-head">
+    <div class="modal-content">
+      <div class="modal-header">
         <h3 id="modalTitle">Formulario</h3>
-        <button id="closeModal" class="btn-icon">✖</button>
+        <button id="closeModal" class="close-btn" aria-label="Cerrar">×</button>
       </div>
       <form id="modalForm" class="modal-body"></form>
     </div>
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="app.app.js"></script>
+
+  <script src="./app.app.js"></script>
 </body>
 </html>
