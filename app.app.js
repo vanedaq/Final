@@ -1,12 +1,10 @@
 /* ============== Utilidades ============== */
 const fmt = (v) => new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",minimumFractionDigits:0}).format(v||0);
 
-/** "1,84" -> 0.0184 (fracción mensual). Solo coma permitido.
- *  Admite "1,84" o "1" etc. */
+/** "1,84" -> 0.0184 (fracción mensual). Solo coma/punto -> se normaliza */
 function parsePctComma(str){
   const s = String(str||"").trim();
   if(!s) return NaN;
-  // normalizar puntitos -> coma
   const norm = s.replace(/\./g, ',');
   if(!/^\d+(,\d{1,3})?$/.test(norm)) return NaN;
   const [ent,dec=""]=norm.split(",");
@@ -24,7 +22,6 @@ class Finanzas {
     this.key="organizadorFinanciero.v2";
     this.selKey="organizadorFinanciero.mesSelec";
     this.iniYM="2025-08";
-    // si hay mes guardado usarlo
     this.mes=localStorage.getItem(this.selKey) || this.iniYM;
     this.data=this.load();
 
@@ -90,7 +87,7 @@ class Finanzas {
     if(this.btns.closeModal) this.btns.closeModal.addEventListener("click",()=>this.closeModal());
     document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") this.closeModal(); });
 
-    // Normaliza coma/punto para inputs que usemos (por seguridad)
+    // Normaliza comma input (para inputs que tengan data-comma)
     document.body.addEventListener('input',(e)=>{
       const el=e.target;
       if(!el) return;
@@ -105,14 +102,12 @@ class Finanzas {
     this.panels.forEach(p=>p.classList.toggle("hidden",p.id!==name));
   }
 
-  /* Storage */
   uid(){ return Date.now()+Math.floor(Math.random()*1e6); }
   load(){
     try{
       const raw=localStorage.getItem(this.key);
       if(raw) return JSON.parse(raw);
     }catch(e){}
-    // seed initial month
     const seed={};
     seed[this.iniYM]={
       ingresos:[{id:this.uid(),nombre:"Salario",monto:3500000,categoria:"Trabajo",fecha:`${this.iniYM}-01`}],
@@ -126,26 +121,23 @@ class Finanzas {
   }
   save(){ try{ localStorage.setItem(this.key,JSON.stringify(this.data)); }catch(e){ console.error(e); } }
 
-  /** Si no existe el mes, copiamos datos del mes anterior (incluye tarjetas y creditos) */
   ensureMonth(key){
     if(this.data[key]) return;
-    // calcular mes anterior
     const [y,m]=key.split("-").map(Number);
     let py=y, pm=m-1; if(pm<=0){ pm=12; py--;}
     const prev=`${py}-${String(pm).padStart(2,"0")}`;
     if(this.data[prev]){
-      // copia profunda
       const copy=JSON.parse(JSON.stringify(this.data[prev]));
-      // renumerar ids y ajustar fechas y recalcular cuotas
       Object.values(copy).forEach(arr=>{
         if(Array.isArray(arr)){
           arr.forEach(it=>{
             it.id=this.uid();
             if(it.fecha) it.fecha=`${key}-01`;
+            // reset paid flag for new month to false to avoid confusion
+            it.paid = false;
           });
         }
       });
-      // recalc cuotas al copiar
       (copy.tarjetas||[]).forEach(t=>{
         t.cuotaMensual = this.cuota(Number(t.montoTotal||0), Number(t.tasaMensual||0), parseInt(t.numeroCuotas||0));
       });
@@ -159,28 +151,8 @@ class Finanzas {
     this.save();
   }
 
-  buildMonths(){
-    const sel=this.sel; if(!sel) return;
-    sel.innerHTML="";
-    // generar meses desde iniYM a +36
-    const [y,m]=this.iniYM.split("-").map(Number);
-    const d=new Date(y,m-1,1);
-    for(let i=0;i<=36;i++){
-      const val=d.toISOString().slice(0,7);
-      const txt=d.toLocaleDateString("es-CO",{month:"long",year:"numeric"});
-      const opt=document.createElement("option");
-      opt.value=val; opt.textContent=txt;
-      if(val===this.mes) opt.selected=true;
-      sel.appendChild(opt);
-      d.setMonth(d.getMonth()+1);
-    }
-    this.ensureMonth(this.mes);
-  }
-
-  /* ====== Finanzas ====== */
   rateFromInput(pctStr){ const r=parsePctComma(pctStr); return isNaN(r)?0:r; }
 
-  /** cuota (sistema francés) + aval + ivaAval (avalPct /ivaAvalPct como fracciones) */
   cuota(M,i,n,avalPct=0,ivaAvalPct=0){
     if(!n||n<=0) return 0;
     let base;
@@ -194,7 +166,6 @@ class Finanzas {
     return Math.round(base + avalMensual + ivaAvalMensual);
   }
 
-  /** Recalcula cuotas guardadas para evitar que queden pegadas */
   recalcDeudas(d){
     (d.tarjetas||[]).forEach(it=>{
       const nueva=this.cuota(Number(it.montoTotal||0), Number(it.tasaMensual||0), parseInt(it.numeroCuotas||0));
@@ -206,7 +177,6 @@ class Finanzas {
     });
   }
 
-  /* ====== Render ====== */
   get mesData(){ this.ensureMonth(this.mes); return this.data[this.mes]; }
 
   renderAll(){
@@ -221,15 +191,16 @@ class Finanzas {
     this.renderList("listaCompras",d.gastosCompras,i=>this.rowGeneric("🛒",i,"gastosCompras",i.monto));
     this.renderList("listaAhorros",d.ahorros,i=>this.rowAhorro(i,"ahorros"));
 
-    // sumas
-    const totalIng=d.ingresos.reduce((s,x)=>s+(Number(x.monto)||0),0);
-    const totalFix=d.gastosFijos.reduce((s,x)=>s+(Number(x.monto)||0),0);
-    const totalTar=d.tarjetas.reduce((s,x)=>s+(Number(x.cuotaMensual)||0),0);
-    const totalCre=d.creditos.reduce((s,x)=>s+(Number(x.cuotaMensual)||0),0);
-    const totalCom=d.gastosCompras.reduce((s,x)=>s+(Number(x.monto)||0),0);
-    const totalAho=d.ahorros.reduce((s,x)=>s+(Number(x.actual)||0),0);
-    const totalG=totalFix+totalTar+totalCre+totalCom;
-    const libre=totalIng - totalG;
+    // SUMAS: Solo contamos ítems NO pagados para gastos
+    const totalIng = d.ingresos.reduce((s,x)=>s+(Number(x.monto)||0),0);
+    const totalFix = d.gastosFijos.reduce((s,x)=>s + (x.paid ? 0 : (Number(x.monto)||0)),0);
+    const totalTar = d.tarjetas.reduce((s,x)=>s + (x.paid ? 0 : (Number(x.cuotaMensual)||0)),0);
+    const totalCre = d.creditos.reduce((s,x)=>s + (x.paid ? 0 : (Number(x.cuotaMensual)||0)),0);
+    const totalCom = d.gastosCompras.reduce((s,x)=>s + (x.paid ? 0 : (Number(x.monto)||0)),0);
+    const totalAho = d.ahorros.reduce((s,x)=>s+(Number(x.actual)||0),0);
+
+    const totalG = totalFix + totalTar + totalCre + totalCom;
+    const libre = totalIng - totalG;
 
     const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
     set("sumIngresos",fmt(totalIng)); set("sumFijos",fmt(totalFix));
@@ -252,9 +223,10 @@ class Finanzas {
     return `<div class="item${i.paid? ' is-paid' : ''}">
       <div class="row">
         <div>${icon} <b>${i.nombre}</b><div class="meta">${i.categoria||""} · ${i.fecha||""}</div></div>
-        <div><b>${fmt(monto)}</b></div>
+        <div><b>${fmt(monto)}</b>${i.paid?'<span class="badge">Pagado</span>':''}</div>
       </div>
       <div class="actions">
+        <a data-action="togglePaid" data-key="${key}" data-id="${i.id}" href="#">${i.paid ? '↺ Desmarcar' : '✅ Pagar'}</a>
         <a data-action="edit" data-key="${key}" data-id="${i.id}" href="#">✏️ Editar</a>
         <a data-action="del" data-key="${key}" data-id="${i.id}" href="#">🗑️ Eliminar</a>
       </div>
@@ -267,10 +239,10 @@ class Finanzas {
         <div>💳 <b>${i.nombre}</b>
           <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas} · tasa ${formatPctComma(i.tasaMensual)}%</div>
         </div>
-        <div><b>Total ${fmt(i.montoTotal)}</b></div>
+        <div><b>Total ${fmt(i.montoTotal)}</b>${i.paid?'<span class="badge">Pagado</span>':''}</div>
       </div>
       <div class="actions">
-        <a data-action="togglePaid" data-key="${key}" data-id="${i.id}" href="#">✅ Pagar</a>
+        <a data-action="togglePaid" data-key="${key}" data-id="${i.id}" href="#">${i.paid ? '↺ Desmarcar' : '✅ Pagar'}</a>
         <a data-action="edit" data-key="${key}" data-id="${i.id}" href="#">✏️ Editar</a>
         <a data-action="del" data-key="${key}" data-id="${i.id}" href="#">🗑️ Eliminar</a>
       </div>
@@ -287,10 +259,10 @@ class Finanzas {
             ${i.ivaAvalPct?` + IVA ${formatPctComma(i.ivaAvalPct)}%`:``}
           </div>
         </div>
-        <div><b>Total ${fmt(i.montoTotal)}</b></div>
+        <div><b>Total ${fmt(i.montoTotal)}</b>${i.paid?'<span class="badge">Pagado</span>':''}</div>
       </div>
       <div class="actions">
-        <a data-action="togglePaid" data-key="${key}" data-id="${i.id}" href="#">✅ Pagar</a>
+        <a data-action="togglePaid" data-key="${key}" data-id="${i.id}" href="#">${i.paid ? '↺ Desmarcar' : '✅ Pagar'}</a>
         <a data-action="edit" data-key="${key}" data-id="${i.id}" href="#">✏️ Editar</a>
         <a data-action="del" data-key="${key}" data-id="${i.id}" href="#">🗑️ Eliminar</a>
       </div>
@@ -344,10 +316,10 @@ class Finanzas {
     const rows=meses.map(m=>{
       const d=this.data[m];
       const ing=d.ingresos.reduce((s,x)=>s+(Number(x.monto)||0),0);
-      const gas=d.gastosFijos.reduce((s,x)=>s+(Number(x.monto)||0),0)
-              + d.tarjetas.reduce((s,x)=>s+(Number(x.cuotaMensual)||0),0)
-              + d.creditos.reduce((s,x)=>s+(Number(x.cuotaMensual)||0),0)
-              + d.gastosCompras.reduce((s,x)=>s+(Number(x.monto)||0),0);
+      const gas=d.gastosFijos.reduce((s,x)=>s+(x.paid?0:(Number(x.monto)||0)),0)
+              + d.tarjetas.reduce((s,x)=>s+(x.paid?0:(Number(x.cuotaMensual)||0)),0)
+              + d.creditos.reduce((s,x)=>s+(x.paid?0:(Number(x.cuotaMensual)||0)),0)
+              + d.gastosCompras.reduce((s,x)=>s+(x.paid?0:(Number(x.monto)||0)),0);
       const bal=ing-gas; const p=ing?((bal/ing)*100).toFixed(1):0;
       return `<tr><td>${m}</td><td>${fmt(ing)}</td><td>${fmt(gas)}</td>
         <td style="color:${bal>=0?"#00b894":"#ff6b6b"}">${fmt(bal)}</td><td>${p}%</td></tr>`;
@@ -367,7 +339,6 @@ class Finanzas {
     const el2=document.getElementById("recomendaciones2"); if(el2) el2.innerHTML = el.innerHTML;
   }
 
-  /* ====== CRUD + Modal ====== */
   openForm(tipo,item=null){
     const f=(name,type,label,value,extra="")=>(
       `<div class="field"><label>${label}</label><input ${extra} type="${type}" id="f_${name}" value="${value??""}"></div>`
@@ -421,11 +392,11 @@ class Finanzas {
       const pct=(x)=>this.rateFromInput(x);
 
       if(tipo==="ingreso"){
-        d.ingresos.push({id:this.uid(),nombre:vals.nombre,monto:n(vals.monto),categoria:vals.categoria,fecha:vals.fecha});
+        d.ingresos.push({id:this.uid(),nombre:vals.nombre,monto:n(vals.monto),categoria:vals.categoria,fecha:vals.fecha,paid:false});
       }else if(tipo==="fijo"){
-        d.gastosFijos.push({id:this.uid(),nombre:vals.nombre,monto:n(vals.monto),categoria:vals.categoria,fecha:vals.fecha});
+        d.gastosFijos.push({id:this.uid(),nombre:vals.nombre,monto:n(vals.monto),categoria:vals.categoria,fecha:vals.fecha,paid:false});
       }else if(tipo==="compra"){
-        d.gastosCompras.push({id:this.uid(),nombre:vals.nombre,monto:n(vals.monto),categoria:vals.categoria,fecha:vals.fecha});
+        d.gastosCompras.push({id:this.uid(),nombre:vals.nombre,monto:n(vals.monto),categoria:vals.categoria,fecha:vals.fecha,paid:false});
       }else if(tipo==="ahorro"){
         d.ahorros.push({id:this.uid(),nombre:vals.nombre,meta:n(vals.meta),actual:n(vals.actual),fecha:vals.fecha});
       }else if(tipo==="tarjeta"){
@@ -524,7 +495,6 @@ class Finanzas {
     if(n>0){ a.actual+=n; this.save(); this.renderAll(); this.toast("Ahorro agregado"); }
   }
 
-  /* ====== Modal ====== */
   showModal(title, innerHtml, onSubmit){
     const modal=this.btns.modal, form=this.btns.modalForm, titleEl=this.btns.modalTitle;
     titleEl.textContent=title;
@@ -534,18 +504,14 @@ class Finanzas {
         <button type="button" class="btn" id="cancelModal">Cancelar</button>
       </div>`;
     modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
-    // attach cancel
     const cancelBtn=document.getElementById("cancelModal");
     if(cancelBtn) cancelBtn.onclick=()=>this.closeModal();
 
-    // form submit
     form.onsubmit=(e)=>{
       e.preventDefault();
       const vals={};
       [...form.querySelectorAll("input")].forEach(inp=>{ const id=inp.id.replace(/^f_/,""); vals[id]=inp.value; });
-      // close first (avoid modal stuck)
       this.closeModal();
-      // onSubmit after a tick
       setTimeout(()=>onSubmit(vals),0);
     };
   }
@@ -557,7 +523,6 @@ class Finanzas {
     if(form) form.innerHTML="";
   }
 
-  /* ====== Otros ====== */
   export(){
     const data={exportado:new Date().toISOString(),mes:this.mes,datos:this.data};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
