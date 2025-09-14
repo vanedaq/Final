@@ -20,12 +20,10 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Estrategia: try cache, fallback fetch, and store
   event.respondWith(
     caches.match(event.request).then(resp => {
       if(resp) return resp;
       return fetch(event.request).then(networkRes => {
-        // opcionalmente cachear
         if(event.request.method === 'GET' && networkRes && networkRes.status === 200){
           caches.open(CACHE_NAME).then(cache => {
             try{ cache.put(event.request, networkRes.clone()); }catch(e){}
