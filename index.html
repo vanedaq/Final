@@ -4,97 +4,126 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Organizador Financiero</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="style.app.css">
+  <link rel="stylesheet" href="style.app.css"> <!-- tu CSS -->
+  <style>
+    /* estilos mínimos para que coincida con IDs del JS y modal */
+    :root{--bg:#6c5ce7;--card:#fff;--muted:#6b7280;--accent:#6c5ce7}
+    body{font-family:Inter, system-ui, Arial; margin:0;background:#f3f4f6;color:#111}
+    header{background:linear-gradient(135deg,#6c5ce7 0%, #7b61ff 100%);color:#fff;padding:28px 20px;border-bottom-left-radius:24px;border-bottom-right-radius:24px}
+    header h1{margin:0;font-size:34px;display:flex;align-items:center;gap:12px}
+    .controls{margin-top:14px;display:flex;gap:10px;align-items:center}
+    .controls select{padding:10px;border-radius:12px;border:0}
+    .summary{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:18px}
+    .tile{background:linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));padding:18px;border-radius:14px;color:#fff;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+    .tabs{display:flex;gap:10px;padding:14px 18px;overflow:auto}
+    .tab{background:#fff;padding:12px 18px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,0.08);white-space:nowrap}
+    main{padding:12px 18px 80px}
+    h2{margin:14px 0}
+    .panel{display:block}
+    .hidden{display:none}
+    .item{background:#fff;border-radius:14px; padding:14px;margin-bottom:12px;box-shadow:0 6px 18px rgba(0,0,0,0.04)}
+    .row{display:flex;justify-content:space-between;align-items:center}
+    .meta{color:#6b7280;font-size:13px;margin-top:6px}
+    .actions{margin-top:10px;display:flex;gap:12px}
+    a{color:#2563eb;text-decoration:underline;cursor:pointer}
+    /* Modal */
+    .modal{position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(8,6,23,0.5);z-index:999}
+    .modal.hidden{display:none}
+    .modal-window{width:min(720px,94%);background:#fff;border-radius:18px;padding:22px;position:relative;box-shadow:0 18px 60px rgba(0,0,0,0.35)}
+    .modal-close{position:absolute;right:18px;top:18px;border:0;background:#fff;border-radius:8px;padding:6px 8px;box-shadow:0 6px 18px rgba(0,0,0,0.08);cursor:pointer}
+    .field{margin-bottom:12px}
+    .field label{display:block;margin-bottom:6px;font-weight:700}
+    .field input{width:100%;padding:10px;border-radius:10px;border:1px solid #e6e9ef}
+    .actions .primary{background:var(--accent);color:#fff;border:0;padding:10px 16px;border-radius:10px}
+    .actions .cancel{background:#f3f4f6;padding:10px 16px;border-radius:10px;border:0}
+    #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:#111;color:#fff;padding:8px 14px;border-radius:10px;opacity:0;transition:opacity .22s}
+    #toast.show{opacity:1}
+    table{width:100%;border-collapse:collapse}
+    table th, table td{padding:8px;text-align:left;border-bottom:1px solid #eee}
+  </style>
 </head>
 <body>
-  <header class="hero">
-    <div class="hero-inner">
-      <div class="logo">💰</div>
-      <h1>Organizador Financiero</h1>
-      <p class="sub">Control inteligente de tus finanzas</p>
-      <div class="controls">
-        <select id="mesSelector" aria-label="Mes"></select>
-        <button id="exportBtn" class="btn">📥 Exportar</button>
-        <button id="resetBtn" class="btn danger">🧹 Reset</button>
-      </div>
+  <header>
+    <h1>💰 <span>Organizador Financiero</span></h1>
+    <p style="margin:8px 0 0 0;color:rgba(255,255,255,0.85)">Control inteligente de tus finanzas</p>
+    <div class="controls">
+      <select id="mesSelector" aria-label="Mes"></select>
+      <button id="exportBtn">📥 Exportar</button>
+      <button id="resetBtn" style="background:#ff8a66;color:#fff;border:0;padding:10px 14px;border-radius:10px">🪄 Reset</button>
     </div>
-    <div class="cards" id="topCards">
-      <div class="card">💵<div class="label">Ingresos</div><div id="sumIngresos" class="value">$ 0</div></div>
-      <div class="card">🏠<div class="label">Fijos</div><div id="sumFijos" class="value">$ 0</div></div>
-      <div class="card">💳<div class="label">Tarjetas</div><div id="sumTarjetas" class="value">$ 0</div></div>
-      <div class="card">🏦<div class="label">Créditos</div><div id="sumCreditos" class="value">$ 0</div></div>
-      <div class="card">🛒<div class="label">Compras</div><div id="sumCompras" class="value">$ 0</div></div>
-      <div class="card">💎<div class="label">Ahorros</div><div id="sumAhorros" class="value">$ 0</div></div>
-      <div class="card dark">📈<div class="label">Total Gastos</div><div id="sumGastos" class="value">$ 0</div></div>
-      <div class="card green">🪙<div class="label">Disponible</div><div id="sumLibre" class="value">$ 0</div></div>
+    <div class="summary" id="summaryRow" style="margin-top:20px">
+      <div class="tile" style="grid-column:span 1"><strong>💵 Ingresos</strong><div id="sumIngresos" style="font-size:20px;margin-top:8px">$ 0</div></div>
+      <div class="tile"><strong>🏠 Fijos</strong><div id="sumFijos" style="font-size:20px;margin-top:8px">$ 0</div></div>
+      <div class="tile"><strong>💳 Tarjetas</strong><div id="sumTarjetas" style="font-size:20px;margin-top:8px">$ 0</div></div>
+      <div class="tile"><strong>🏦 Créditos</strong><div id="sumCreditos" style="font-size:20px;margin-top:8px">$ 0</div></div>
+      <div class="tile"><strong>🛒 Compras</strong><div id="sumCompras" style="font-size:20px;margin-top:8px">$ 0</div></div>
+      <div class="tile"><strong>💎 Ahorros</strong><div id="sumAhorros" style="font-size:20px;margin-top:8px">$ 0</div></div>
+      <div class="tile"><strong>📉 Total Gastos</strong><div id="sumGastos" style="font-size:20px;margin-top:8px">$ 0</div></div>
+      <div class="tile"><strong>💰 Disponible</strong><div id="sumLibre" style="font-size:20px;margin-top:8px">$ 0</div></div>
     </div>
   </header>
 
-  <main class="main">
-    <section id="analisisMensual"></section>
+  <div class="tabs" id="topTabs">
+    <div class="tab" data-tab="dashboard">📊 Dashboard</div>
+    <div class="tab" data-tab="ingresos">💵 Ingresos</div>
+    <div class="tab" data-tab="fijos">🏠 Fijos</div>
+    <div class="tab" data-tab="tarjetas">💳 Tarjetas</div>
+    <div class="tab" data-tab="creditos">🏦 Créditos</div>
+    <div class="tab" data-tab="compras">🛒 Compras</div>
+    <div class="tab" data-tab="ahorros">💎 Ahorros</div>
+  </div>
 
-    <section class="tabs">
-      <div class="tab active" data-tab="dashboard">📊 Dashboard</div>
-      <div class="tab" data-tab="ingresos">💵 Ingresos</div>
-      <div class="tab" data-tab="fijos">🏠 Fijos</div>
-      <div class="tab" data-tab="tarjetas">💳 Tarjetas</div>
-      <div class="tab" data-tab="creditos">🏦 Créditos</div>
-      <div class="tab" data-tab="compras">🛒 Compras</div>
-      <div class="tab" data-tab="ahorros">💎 Ahorros</div>
-    </section>
-
+  <main>
     <section id="dashboard" class="panel">
-      <h2>Dashboard aquí</h2>
+      <h2>📈 Análisis del Mes</h2>
+      <div id="analisisMensual" class="item">Dashboard aquí</div>
+      <h2>🎯 Metas de Ahorro</h2>
+      <div id="metasAhorro" class="item">Crea una meta para empezar.</div>
+      <h2>📚 Historial</h2>
+      <div id="tablaHistorial" class="item"></div>
     </section>
 
     <section id="ingresos" class="panel hidden">
-      <button id="addIngreso" class="add">+ Agregar</button>
+      <h2>💵 Ingresos <button id="addIngreso" style="float:right">+ Agregar</button></h2>
       <div id="listaIngresos"></div>
     </section>
 
     <section id="fijos" class="panel hidden">
-      <button id="addFijo" class="add">+ Agregar</button>
+      <h2>🏠 Gastos Fijos <button id="addFijo" style="float:right">+ Agregar</button></h2>
       <div id="listaFijos"></div>
     </section>
 
     <section id="tarjetas" class="panel hidden">
-      <button id="addTarjeta" class="add">+ Agregar</button>
+      <h2>💳 Tarjetas de Crédito <button id="addTarjeta" style="float:right">+ Agregar</button></h2>
       <div id="listaTarjetas"></div>
     </section>
 
     <section id="creditos" class="panel hidden">
-      <button id="addCredito" class="add">+ Agregar</button>
+      <h2>🏦 Créditos Bancarios <button id="addCredito" style="float:right">+ Agregar</button></h2>
       <div id="listaCreditos"></div>
     </section>
 
     <section id="compras" class="panel hidden">
-      <button id="addCompra" class="add">+ Agregar</button>
+      <h2>🛒 Compras <button id="addCompra" style="float:right">+ Agregar</button></h2>
       <div id="listaCompras"></div>
     </section>
 
     <section id="ahorros" class="panel hidden">
-      <button id="addAhorro2" class="add">+ Nueva Meta</button>
+      <h2>💎 Metas de Ahorro <button id="addAhorro2" style="float:right">+ Nueva Meta</button></h2>
       <div id="listaAhorros"></div>
     </section>
-
-    <section id="metasAhorro"></section>
-
-    <section id="tablaHistorial"></section>
-
-    <div id="recomendaciones"></div>
   </main>
 
   <!-- Modal -->
   <div id="modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-window">
+    <div class="modal-window" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <button id="closeModal" class="modal-close" title="Cerrar">✕</button>
       <h3 id="modalTitle">Formulario</h3>
       <form id="modalForm"></form>
     </div>
   </div>
 
-  <div id="toast" class="toast" aria-hidden="true"></div>
+  <div id="toast"></div>
 
   <script src="app.app.js"></script>
 </body>
