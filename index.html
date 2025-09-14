@@ -9,9 +9,10 @@
 </head>
 <body>
   <header class="hero">
-    <div class="container">
+    <div class="container header-inner">
       <div class="logo">💰 <span>Organizador Financiero</span></div>
       <p class="sub">Control inteligente de tus finanzas</p>
+
       <div class="controls">
         <select id="mesSelector" aria-label="Selector de mes"></select>
         <button id="exportBtn" class="btn">📥 Exportar</button>
@@ -21,18 +22,18 @@
   </header>
 
   <main class="container">
-    <section class="cards">
-      <div class="big" id="sumIngresos">Ingresos<br><span>$ 0</span></div>
-      <div class="big" id="sumFijos">Fijos<br><span>$ 0</span></div>
-      <div class="big" id="sumTarjetas">Tarjetas<br><span>$ 0</span></div>
-      <div class="big" id="sumCreditos">Créditos<br><span>$ 0</span></div>
-      <div class="big" id="sumCompras">Compras<br><span>$ 0</span></div>
-      <div class="big" id="sumAhorros">Ahorros<br><span>$ 0</span></div>
-      <div class="big" id="sumGastos">Total Gastos<br><span>$ 0</span></div>
-      <div class="big" id="sumLibre">Disponible<br><span>$ 0</span></div>
+    <section class="cards" id="topCards">
+      <div class="big" id="sumIngresos"><div class="title">💵 Ingresos</div><div class="value">$ 0</div></div>
+      <div class="big" id="sumFijos"><div class="title">🏠 Fijos</div><div class="value">$ 0</div></div>
+      <div class="big" id="sumTarjetas"><div class="title">💳 Tarjetas</div><div class="value">$ 0</div></div>
+      <div class="big" id="sumCreditos"><div class="title">🏦 Créditos</div><div class="value">$ 0</div></div>
+      <div class="big" id="sumCompras"><div class="title">🛒 Compras</div><div class="value">$ 0</div></div>
+      <div class="big" id="sumAhorros"><div class="title">💎 Ahorros</div><div class="value">$ 0</div></div>
+      <div class="big" id="sumGastos"><div class="title">📉 Total Gastos</div><div class="value">$ 0</div></div>
+      <div class="big" id="sumLibre"><div class="title">💰 Disponible</div><div class="value">$ 0</div></div>
     </section>
 
-    <nav class="tabs">
+    <nav class="tabs" role="navigation" aria-label="Secciones">
       <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
       <button class="tab" data-tab="ingresos">💵 Ingresos</button>
       <button class="tab" data-tab="fijos">🏠 Fijos</button>
@@ -93,7 +94,7 @@
     </section>
   </main>
 
-  <!-- modal -->
+  <!-- Modal -->
   <div id="modal" class="modal hidden" aria-hidden="true">
     <div class="modal-inner" role="dialog" aria-modal="true">
       <button id="closeModal" class="modal-close" aria-label="Cerrar">✕</button>
