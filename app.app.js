@@ -1,11 +1,15 @@
 /* ============== Utilidades ============== */
 const fmt = (v) => new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",minimumFractionDigits:0}).format(v||0);
 
-/** "1,84" -> 0.0184 (fracción mensual). Acepta coma. */
+/** "1,84" -> 0.0184 (fracción mensual). Solo coma permitido.
+ *  Admite "1,84" o "1" etc. */
 function parsePctComma(str){
   const s = String(str||"").trim();
-  if(!/^\d+(,\d{1,3})?$/.test(s)) return NaN;
-  const [ent,dec=""]=s.split(",");
+  if(!s) return NaN;
+  // normalizar puntitos -> coma
+  const norm = s.replace(/\./g, ',');
+  if(!/^\d+(,\d{1,3})?$/.test(norm)) return NaN;
+  const [ent,dec=""]=norm.split(",");
   const n = Number(ent) + (dec? Number(dec)/Math.pow(10,dec.length):0);
   return n/100;
 }
@@ -17,9 +21,11 @@ function formatPctComma(frac,decimals=2){
 /* ============== App ============== */
 class Finanzas {
   constructor(){
-    this.key="organizadorFinanciero";
+    this.key="organizadorFinanciero.v2";
+    this.selKey="organizadorFinanciero.mesSelec";
     this.iniYM="2025-08";
-    this.mes = localStorage.getItem(`${this.key}_mes`) || this.iniYM;
+    // si hay mes guardado usarlo
+    this.mes=localStorage.getItem(this.selKey) || this.iniYM;
     this.data=this.load();
 
     this.cacheEls();
@@ -27,7 +33,9 @@ class Finanzas {
     this.buildMonths();
     this.renderAll();
 
-    if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").catch(()=>{}); }
+    if("serviceWorker" in navigator){
+      navigator.serviceWorker.register("./sw.js").catch(()=>{});
+    }
   }
 
   cacheEls(){
@@ -53,42 +61,43 @@ class Finanzas {
 
   bindUI(){
     this.tabs.forEach(t=>t.addEventListener("click",()=>this.showTab(t.dataset.tab)));
-    if(this.sel) this.sel.addEventListener("change",(e)=>{ this.mes=e.target.value; localStorage.setItem(`${this.key}_mes`, this.mes); this.ensureMonth(this.mes); this.renderAll(); this.toast("Mes cambiado"); });
-    Object.entries(this.btns).forEach(([k,el])=>{
-      if(!el) return;
-      if(k==="addIngreso") el.onclick=()=>this.openForm("ingreso");
-      if(k==="addFijo") el.onclick=()=>this.openForm("fijo");
-      if(k==="addTarjeta") el.onclick=()=>this.openForm("tarjeta");
-      if(k==="addCredito") el.onclick=()=>this.openForm("credito");
-      if(k==="addCompra") el.onclick=()=>this.openForm("compra");
-      if(k==="addAhorro") el.onclick=()=>this.openForm("ahorro");
-      if(k==="export") el.onclick=()=>this.export();
-      if(k==="reset") el.onclick=()=>this.reset();
-      if(k==="closeModal") el.onclick=()=>this.closeModal();
-    });
+    if(this.sel) this.sel.addEventListener("change",(e)=>{ this.mes=e.target.value; localStorage.setItem(this.selKey,this.mes); this.ensureMonth(this.mes); this.renderAll(); this.toast("Mes cambiado"); });
 
-    // Delegación: edit / delete / add ahorro
+    const b=this.btns;
+    if(b.addIngreso) b.addIngreso.onclick=()=>this.openForm("ingreso");
+    if(b.addFijo) b.addFijo.onclick=()=>this.openForm("fijo");
+    if(b.addTarjeta) b.addTarjeta.onclick=()=>this.openForm("tarjeta");
+    if(b.addCredito) b.addCredito.onclick=()=>this.openForm("credito");
+    if(b.addCompra) b.addCompra.onclick=()=>this.openForm("compra");
+    if(b.addAhorro) b.addAhorro.onclick=()=>this.openForm("ahorro");
+    if(b.export) b.export.onclick=()=>this.export();
+    if(b.reset) b.reset.onclick=()=>this.reset();
+
+    // Delegación: editar/eliminar/pagar/añadir ahorro
     document.body.addEventListener("click",(ev)=>{
-      const a=ev.target.closest("a[data-action]"); if(!a) return;
+      const a=ev.target.closest("[data-action]");
+      if(!a) return;
       ev.preventDefault();
-      const act=a.dataset.action, key=a.dataset.key, id=parseInt(a.dataset.id);
+      const act=a.dataset.action, key=a.dataset.key, id=Number(a.dataset.id);
       if(act==="edit") this.edit(key,id);
       if(act==="del") this.del(key,id);
+      if(act==="togglePaid") this.togglePaid(key,id);
       if(act==="addsave") this.addAhorroMonto(id);
     });
 
-    // Cerrar modal por overlay y Escape
-    this.btns.modal.addEventListener("click",(e)=>{ if(e.target.id==="modal") this.closeModal(); });
+    // cerrar modal con overlay o ESC o botón
+    if(this.btns.modal) this.btns.modal.addEventListener("click",(e)=>{ if(e.target.id==="modal") this.closeModal(); });
+    if(this.btns.closeModal) this.btns.closeModal.addEventListener("click",()=>this.closeModal());
     document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") this.closeModal(); });
 
-    // Normalizar input decimal (mientras escriben) -> convertir punto a coma para la UX hispana
-    document.body.addEventListener('input', (e) => {
-      const el = e.target;
+    // Normaliza coma/punto para inputs que usemos (por seguridad)
+    document.body.addEventListener('input',(e)=>{
+      const el=e.target;
       if(!el) return;
-      if(el.getAttribute && el.getAttribute('inputmode') === 'decimal'){
-        el.value = el.value.replace('.',',').replace(/[^\d,]/g,'');
+      if(el.matches("input[data-comma]")){
+        el.value = el.value.replace(".",",").replace(/[^\d,]/g,"");
       }
-    }, {passive:true});
+    });
   }
 
   showTab(name){
@@ -96,12 +105,16 @@ class Finanzas {
     this.panels.forEach(p=>p.classList.toggle("hidden",p.id!==name));
   }
 
-  /* ====== Storage & seed ====== */
+  /* Storage */
   uid(){ return Date.now()+Math.floor(Math.random()*1e6); }
   load(){
-    try{ const raw=localStorage.getItem(this.key); if(raw) return JSON.parse(raw); }catch{}
-    // seed inicial útil
-    const seed={}; seed[this.iniYM]={
+    try{
+      const raw=localStorage.getItem(this.key);
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    // seed initial month
+    const seed={};
+    seed[this.iniYM]={
       ingresos:[{id:this.uid(),nombre:"Salario",monto:3500000,categoria:"Trabajo",fecha:`${this.iniYM}-01`}],
       gastosFijos:[{id:this.uid(),nombre:"Arriendo",monto:1200000,categoria:"Vivienda",fecha:`${this.iniYM}-01`}],
       tarjetas:[],
@@ -111,24 +124,34 @@ class Finanzas {
     };
     return seed;
   }
-  save(){ try{ localStorage.setItem(this.key,JSON.stringify(this.data)); }catch{} }
+  save(){ try{ localStorage.setItem(this.key,JSON.stringify(this.data)); }catch(e){ console.error(e); } }
 
-  /** Crear mes nuevo — copia del mes previo (ingresos, fijos, tarjetas, creditos, ahorros) */
+  /** Si no existe el mes, copiamos datos del mes anterior (incluye tarjetas y creditos) */
   ensureMonth(key){
     if(this.data[key]) return;
+    // calcular mes anterior
     const [y,m]=key.split("-").map(Number);
-    let py=y, pm=m-1; if(pm<=0){pm=12;py--;}
+    let py=y, pm=m-1; if(pm<=0){ pm=12; py--;}
     const prev=`${py}-${String(pm).padStart(2,"0")}`;
     if(this.data[prev]){
-      const prevObj=this.data[prev];
-      const copy={
-        ingresos: prevObj.ingresos.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
-        gastosFijos: prevObj.gastosFijos.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
-        tarjetas: prevObj.tarjetas.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
-        creditos: prevObj.creditos.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
-        gastosCompras: prevObj.gastosCompras.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
-        ahorros: prevObj.ahorros.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); return n; })
-      };
+      // copia profunda
+      const copy=JSON.parse(JSON.stringify(this.data[prev]));
+      // renumerar ids y ajustar fechas y recalcular cuotas
+      Object.values(copy).forEach(arr=>{
+        if(Array.isArray(arr)){
+          arr.forEach(it=>{
+            it.id=this.uid();
+            if(it.fecha) it.fecha=`${key}-01`;
+          });
+        }
+      });
+      // recalc cuotas al copiar
+      (copy.tarjetas||[]).forEach(t=>{
+        t.cuotaMensual = this.cuota(Number(t.montoTotal||0), Number(t.tasaMensual||0), parseInt(t.numeroCuotas||0));
+      });
+      (copy.creditos||[]).forEach(c=>{
+        c.cuotaMensual = this.cuota(Number(c.montoTotal||0), Number(c.tasaMensual||0), parseInt(c.numeroCuotas||0), Number(c.avalPct||0), Number(c.ivaAvalPct||0));
+      });
       this.data[key]=copy;
     }else{
       this.data[key]={ingresos:[],gastosFijos:[],tarjetas:[],creditos:[],gastosCompras:[],ahorros:[]};
@@ -139,48 +162,46 @@ class Finanzas {
   buildMonths(){
     const sel=this.sel; if(!sel) return;
     sel.innerHTML="";
+    // generar meses desde iniYM a +36
     const [y,m]=this.iniYM.split("-").map(Number);
     const d=new Date(y,m-1,1);
     for(let i=0;i<=36;i++){
       const val=d.toISOString().slice(0,7);
       const txt=d.toLocaleDateString("es-CO",{month:"long",year:"numeric"});
       const opt=document.createElement("option");
-      opt.value=val; opt.textContent=txt; if(val===this.mes) opt.selected=true;
-      sel.appendChild(opt); d.setMonth(d.getMonth()+1);
+      opt.value=val; opt.textContent=txt;
+      if(val===this.mes) opt.selected=true;
+      sel.appendChild(opt);
+      d.setMonth(d.getMonth()+1);
     }
     this.ensureMonth(this.mes);
   }
 
-  /* ====== Finanzas: cuota (sistema francés) ====== */
+  /* ====== Finanzas ====== */
   rateFromInput(pctStr){ const r=parsePctComma(pctStr); return isNaN(r)?0:r; }
 
+  /** cuota (sistema francés) + aval + ivaAval (avalPct /ivaAvalPct como fracciones) */
   cuota(M,i,n,avalPct=0,ivaAvalPct=0){
     if(!n||n<=0) return 0;
     let base;
-    if(!i || i===0) base = M / n;
+    if(!i) base = M/n;
     else {
-      // fórmula: A = M * i / (1 - (1+i)^-n)
-      const denom = 1 - Math.pow(1+i, -n);
-      base = M * i / denom;
+      const f = Math.pow(1+i,n);
+      base = (M * i * f) / (f - 1);
     }
     const avalMensual = (M * (avalPct||0)) / n;
     const ivaAvalMensual = avalMensual * (ivaAvalPct||0);
     return Math.round(base + avalMensual + ivaAvalMensual);
   }
 
+  /** Recalcula cuotas guardadas para evitar que queden pegadas */
   recalcDeudas(d){
     (d.tarjetas||[]).forEach(it=>{
-      const nueva=this.cuota(Number(it.montoTotal||0),Number(it.tasaMensual||0),parseInt(it.numeroCuotas||0));
+      const nueva=this.cuota(Number(it.montoTotal||0), Number(it.tasaMensual||0), parseInt(it.numeroCuotas||0));
       if(!it.cuotaMensual || Math.abs((it.cuotaMensual||0)-nueva)>1) it.cuotaMensual=nueva;
     });
     (d.creditos||[]).forEach(it=>{
-      const nueva=this.cuota(
-        Number(it.montoTotal||0),
-        Number(it.tasaMensual||0),
-        parseInt(it.numeroCuotas||0),
-        Number(it.avalPct||0),
-        Number(it.ivaAvalPct||0)
-      );
+      const nueva=this.cuota(Number(it.montoTotal||0), Number(it.tasaMensual||0), parseInt(it.numeroCuotas||0), Number(it.avalPct||0), Number(it.ivaAvalPct||0));
       if(!it.cuotaMensual || Math.abs((it.cuotaMensual||0)-nueva)>1) it.cuotaMensual=nueva;
     });
   }
@@ -190,7 +211,8 @@ class Finanzas {
 
   renderAll(){
     const d=this.mesData;
-    this.recalcDeudas(d); this.save();
+    this.recalcDeudas(d);
+    this.save();
 
     this.renderList("listaIngresos",d.ingresos,i=>this.rowGeneric("💵",i,"ingresos",i.monto));
     this.renderList("listaFijos",d.gastosFijos,i=>this.rowGeneric("🏠",i,"gastosFijos",i.monto));
@@ -199,24 +221,21 @@ class Finanzas {
     this.renderList("listaCompras",d.gastosCompras,i=>this.rowGeneric("🛒",i,"gastosCompras",i.monto));
     this.renderList("listaAhorros",d.ahorros,i=>this.rowAhorro(i,"ahorros"));
 
-    const totalIng=d.ingresos.reduce((s,x)=>s+(x.monto||0),0);
-    const totalFix=d.gastosFijos.reduce((s,x)=>s+(x.monto||0),0);
-    const totalTar=d.tarjetas.reduce((s,x)=>s+(x.cuotaMensual||0),0);
-    const totalCre=d.creditos.reduce((s,x)=>s+(x.cuotaMensual||0),0);
-    const totalCom=d.gastosCompras.reduce((s,x)=>s+(x.monto||0),0);
-    const totalAho=d.ahorros.reduce((s,x)=>s+(x.actual||0),0);
+    // sumas
+    const totalIng=d.ingresos.reduce((s,x)=>s+(Number(x.monto)||0),0);
+    const totalFix=d.gastosFijos.reduce((s,x)=>s+(Number(x.monto)||0),0);
+    const totalTar=d.tarjetas.reduce((s,x)=>s+(Number(x.cuotaMensual)||0),0);
+    const totalCre=d.creditos.reduce((s,x)=>s+(Number(x.cuotaMensual)||0),0);
+    const totalCom=d.gastosCompras.reduce((s,x)=>s+(Number(x.monto)||0),0);
+    const totalAho=d.ahorros.reduce((s,x)=>s+(Number(x.actual)||0),0);
     const totalG=totalFix+totalTar+totalCre+totalCom;
-    const libre=totalIng-totalG;
+    const libre=totalIng - totalG;
 
-    const set=(id,title,val)=>{ const el=document.getElementById(id); if(!el) return; el.querySelector('.title').textContent=title; el.querySelector('.value').textContent=val; };
-    set("sumIngresos","💵 Ingresos",fmt(totalIng));
-    set("sumFijos","🏠 Fijos",fmt(totalFix));
-    set("sumTarjetas","💳 Tarjetas",fmt(totalTar));
-    set("sumCreditos","🏦 Créditos",fmt(totalCre));
-    set("sumCompras","🛒 Compras",fmt(totalCom));
-    set("sumAhorros","💎 Ahorros",fmt(totalAho));
-    set("sumGastos","📉 Total Gastos",fmt(totalG));
-    set("sumLibre","💰 Disponible",fmt(libre));
+    const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+    set("sumIngresos",fmt(totalIng)); set("sumFijos",fmt(totalFix));
+    set("sumTarjetas",fmt(totalTar)); set("sumCreditos",fmt(totalCre));
+    set("sumCompras",fmt(totalCom)); set("sumAhorros",fmt(totalAho));
+    set("sumGastos",fmt(totalG)); set("sumLibre",fmt(libre));
 
     this.renderDashboard(totalIng,totalG,libre);
     this.renderMetas(d.ahorros);
@@ -224,12 +243,15 @@ class Finanzas {
     this.renderConsejos(totalIng,totalG);
   }
 
-  renderList(id,arr,row){ const el=document.getElementById(id); if(!el) return; el.innerHTML=arr && arr.length?arr.map(row).join(""):'<p class="meta">Sin registros.</p>'; }
+  renderList(id,arr,row){
+    const el=document.getElementById(id); if(!el) return;
+    el.innerHTML = arr && arr.length ? arr.map(row).join("") : '<p class="meta">Sin registros.</p>';
+  }
 
   rowGeneric(icon,i,key,monto){
-    return `<div class="item">
+    return `<div class="item${i.paid? ' is-paid' : ''}">
       <div class="row">
-        <div>${icon} <b>${i.nombre}</b><div class="meta">${i.categoria||""} ${i.fecha?`· ${i.fecha}`:""}</div></div>
+        <div>${icon} <b>${i.nombre}</b><div class="meta">${i.categoria||""} · ${i.fecha||""}</div></div>
         <div><b>${fmt(monto)}</b></div>
       </div>
       <div class="actions">
@@ -240,14 +262,15 @@ class Finanzas {
   }
 
   rowTarjeta(i,key){
-    return `<div class="item ${i.paid?'is-paid':''}">
+    return `<div class="item${i.paid? ' is-paid' : ''}">
       <div class="row">
         <div>💳 <b>${i.nombre}</b>
-          <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas||0} · tasa ${formatPctComma(i.tasaMensual)}%</div>
+          <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas} · tasa ${formatPctComma(i.tasaMensual)}%</div>
         </div>
         <div><b>Total ${fmt(i.montoTotal)}</b></div>
       </div>
       <div class="actions">
+        <a data-action="togglePaid" data-key="${key}" data-id="${i.id}" href="#">✅ Pagar</a>
         <a data-action="edit" data-key="${key}" data-id="${i.id}" href="#">✏️ Editar</a>
         <a data-action="del" data-key="${key}" data-id="${i.id}" href="#">🗑️ Eliminar</a>
       </div>
@@ -255,10 +278,10 @@ class Finanzas {
   }
 
   rowCredito(i,key){
-    return `<div class="item ${i.paid?'is-paid':''}">
+    return `<div class="item${i.paid? ' is-paid' : ''}">
       <div class="row">
         <div>🏦 <b>${i.nombre}</b>
-          <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas||0}
+          <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas}
             · tasa ${formatPctComma(i.tasaMensual)}%
             ${i.avalPct?` · aval ${formatPctComma(i.avalPct)}%`:``}
             ${i.ivaAvalPct?` + IVA ${formatPctComma(i.ivaAvalPct)}%`:``}
@@ -267,6 +290,7 @@ class Finanzas {
         <div><b>Total ${fmt(i.montoTotal)}</b></div>
       </div>
       <div class="actions">
+        <a data-action="togglePaid" data-key="${key}" data-id="${i.id}" href="#">✅ Pagar</a>
         <a data-action="edit" data-key="${key}" data-id="${i.id}" href="#">✏️ Editar</a>
         <a data-action="del" data-key="${key}" data-id="${i.id}" href="#">🗑️ Eliminar</a>
       </div>
@@ -294,11 +318,10 @@ class Finanzas {
   }
 
   renderDashboard(ing,gastos,libre){
-    const tasa=ing?((libre/ing)*100).toFixed(1):0;
-    const color=libre>=0?"#00b894":"#ff6b6b";
-    const el=document.getElementById("analisisMensual");
-    if(!el) return;
-    el.innerHTML=`<div class="item"><b style="color:${color}">${fmt(libre)}</b> de balance — Ahorro ${tasa}%</div>`;
+    const tasa = ing ? ((libre/ing)*100).toFixed(1) : 0;
+    const color = libre>=0 ? "#00b894" : "#ff6b6b";
+    const el=document.getElementById("analisisMensual"); if(!el) return;
+    el.innerHTML=`<div class="card"><b style="color:${color}">${fmt(libre)}</b> de balance — Ahorro ${tasa}%</div>`;
   }
 
   renderMetas(ahorros){
@@ -320,18 +343,16 @@ class Finanzas {
     const meses=Object.keys(this.data).sort();
     const rows=meses.map(m=>{
       const d=this.data[m];
-      const ing=d.ingresos.reduce((s,x)=>s+(x.monto||0),0);
-      const gas=d.gastosFijos.reduce((s,x)=>s+(x.monto||0),0)
-              + d.tarjetas.reduce((s,x)=>s+(x.cuotaMensual||0),0)
-              + d.creditos.reduce((s,x)=>s+(x.cuotaMensual||0),0)
-              + d.gastosCompras.reduce((s,x)=>s+(x.monto||0),0);
+      const ing=d.ingresos.reduce((s,x)=>s+(Number(x.monto)||0),0);
+      const gas=d.gastosFijos.reduce((s,x)=>s+(Number(x.monto)||0),0)
+              + d.tarjetas.reduce((s,x)=>s+(Number(x.cuotaMensual)||0),0)
+              + d.creditos.reduce((s,x)=>s+(Number(x.cuotaMensual)||0),0)
+              + d.gastosCompras.reduce((s,x)=>s+(Number(x.monto)||0),0);
       const bal=ing-gas; const p=ing?((bal/ing)*100).toFixed(1):0;
       return `<tr><td>${m}</td><td>${fmt(ing)}</td><td>${fmt(gas)}</td>
         <td style="color:${bal>=0?"#00b894":"#ff6b6b"}">${fmt(bal)}</td><td>${p}%</td></tr>`;
     }).join("");
-    el.innerHTML=`<div style="overflow:auto">
-      <table style="width:100%;border-collapse:collapse"><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Balance</th><th>% Ahorro</th></tr></thead><tbody>${rows}</tbody></table>
-    </div>`;
+    el.innerHTML=`<div style="overflow:auto"><table style="width:100%"><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Balance</th><th>% Ahorro</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   renderConsejos(ing,gas){
@@ -342,55 +363,56 @@ class Finanzas {
     list.push({t:"📊 50/30/20",d:"50% necesidades, 30% gustos, 20% ahorro/inversión."});
     list.push({t:"💳 Tarjetas",d:"Paga total para evitar intereses."});
     el.innerHTML=list.map(c=>`<div class="item"><b>${c.t}</b><div class="meta">${c.d}</div></div>`).join("");
+
+    const el2=document.getElementById("recomendaciones2"); if(el2) el2.innerHTML = el.innerHTML;
   }
 
   /* ====== CRUD + Modal ====== */
   openForm(tipo,item=null){
     const f=(name,type,label,value,extra="")=>(
-      `<div class="field"><label>${label}</label><input type="${type}" id="f_${name}" value="${value??""}" ${extra}></div>`
+      `<div class="field"><label>${label}</label><input ${extra} type="${type}" id="f_${name}" value="${value??""}"></div>`
     );
     let title="Formulario", fields="";
-    // campos por tipo
     if(tipo==="ingreso"){
       title="Nuevo Ingreso";
       fields= f("nombre","text","Nombre","")
-            + f("monto","number","Monto","","step='1' min='0'")
+            + f("monto","number","Monto","0","step='1' min='0'")
             + f("categoria","text","Categoría","Trabajo")
             + f("fecha","date","Fecha",`${this.mes}-01`);
     }else if(tipo==="fijo"){
       title="Nuevo Gasto Fijo";
       fields= f("nombre","text","Nombre","")
-            + f("monto","number","Monto","","step='1' min='0'")
+            + f("monto","number","Monto","0","step='1' min='0'")
             + f("categoria","text","Categoría","Vivienda")
             + f("fecha","date","Fecha",`${this.mes}-01`);
     }else if(tipo==="compra"){
       title="Nueva Compra";
       fields= f("nombre","text","Descripción","")
-            + f("monto","number","Monto","","step='1' min='0'")
+            + f("monto","number","Monto","0","step='1' min='0'")
             + f("categoria","text","Categoría","Alimentación")
             + f("fecha","date","Fecha",`${this.mes}-01`);
     }else if(tipo==="ahorro"){
       title="Nueva Meta de Ahorro";
       fields= f("nombre","text","Nombre","")
-            + f("meta","number","Meta","","step='1' min='0'")
+            + f("meta","number","Meta","0","step='1' min='0'")
             + f("actual","number","Actual","0","step='1' min='0'")
             + f("fecha","date","Fecha",`${this.mes}-01`);
     }else if(tipo==="tarjeta"){
       title="Nueva Tarjeta";
       fields= f("nombre","text","Nombre","")
-            + f("montoTotal","number","Monto total","","step='1' min='1'")
-            + f("numeroCuotas","number","Cuotas","","step='1' min='1'")
+            + f("montoTotal","number","Monto total","0","step='1' min='1'")
+            + f("numeroCuotas","number","Cuotas","1","step='1' min='1'")
             + f("cuotasPagadas","number","Pagadas","0","step='1' min='0'")
-            + f("tasa","text","Tasa mensual % (coma, ej: 1,85)","1,85","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
+            + f("tasa","text","Tasa mensual % (coma, ej: 1,85)","1,85","data-comma");
     }else if(tipo==="credito"){
       title="Nuevo Crédito";
       fields= f("nombre","text","Nombre","")
-            + f("montoTotal","number","Monto total","","step='1' min='1'")
-            + f("numeroCuotas","number","Cuotas","","step='1' min='1'")
+            + f("montoTotal","number","Monto total","0","step='1' min='1'")
+            + f("numeroCuotas","number","Cuotas","1","step='1' min='1'")
             + f("cuotasPagadas","number","Pagadas","0","step='1' min='0'")
-            + f("tasa","text","Tasa mensual % (coma, ej: 1,85)","1,85","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'")
-            + f("aval","text","Aval % sobre capital (coma, ej: 12,00)","0,00","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'")
-            + f("ivaAval","text","IVA del aval % (coma, ej: 19,00)","0,00","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
+            + f("tasa","text","Tasa mensual % (coma, ej: 1,85)","1,85","data-comma")
+            + f("aval","text","Aval % sobre capital (coma, ej: 12,00)","0,00","data-comma")
+            + f("ivaAval","text","IVA del aval % (coma, ej: 19,00)","0,00","data-comma");
     }
 
     this.showModal(title, fields, (vals)=>{
@@ -408,20 +430,19 @@ class Finanzas {
         d.ahorros.push({id:this.uid(),nombre:vals.nombre,meta:n(vals.meta),actual:n(vals.actual),fecha:vals.fecha});
       }else if(tipo==="tarjeta"){
         const tasa=pct(vals.tasa);
-        if(!(tasa>0 && tasa<=0.5)) { this.toast("Tasa inválida (usa coma, ej: 1,85)"); return; }
+        if(!(tasa>0 && tasa<=0.05)) { this.toast("Tasa inválida (usa coma, ≤5%)"); return; }
         const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
         const cuota=this.cuota(M,tasa,cu);
-        d.tarjetas.push({id:this.uid(),nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,cuotaMensual:cuota,fecha:`${this.mes}-01`});
+        d.tarjetas.push({id:this.uid(),nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,cuotaMensual:cuota,fecha:`${this.mes}-01`,paid:false});
       }else if(tipo==="credito"){
         const tasa=pct(vals.tasa), aval=pct(vals.aval||"0"), iva=pct(vals.ivaAval||"0");
-        if(!(tasa>0 && tasa<=0.5)) { this.toast("Tasa inválida (usa coma, ej: 1,85)"); return; }
-        if(aval<0||aval>0.6){ this.toast("Aval fuera de rango (0%–60%)"); return; }
-        if(iva<0||iva>0.6){ this.toast("IVA aval fuera de rango (0%–60%)"); return; }
+        if(!(tasa>0 && tasa<=0.05)) { this.toast("Tasa inválida (usa coma, ≤5%)"); return; }
+        if(aval<0||aval>0.3){ this.toast("Aval fuera de rango (0%–30%)"); return; }
+        if(iva<0||iva>0.3){ this.toast("IVA aval fuera de rango (0%–30%)"); return; }
         const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
         const cuota=this.cuota(M,tasa,cu,aval,iva);
-        d.creditos.push({id:this.uid(),nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,avalPct:aval,ivaAvalPct:iva,cuotaMensual:cuota,fecha:`${this.mes}-01`});
+        d.creditos.push({id:this.uid(),nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,avalPct:aval,ivaAvalPct:iva,cuotaMensual:cuota,fecha:`${this.mes}-01`,paid:false});
       }
-
       this.save(); this.renderAll(); this.toast("Guardado");
     });
   }
@@ -431,7 +452,7 @@ class Finanzas {
     const isDeuda=(key==="tarjetas"||key==="creditos");
 
     const f=(name,type,label,value,extra="")=>(
-      `<div class="field"><label>${label}</label><input type="${type}" id="f_${name}" value="${value??""}" ${extra}></div>`
+      `<div class="field"><label>${label}</label><input ${extra} type="${type}" id="f_${name}" value="${value??""}"></div>`
     );
     let title="Editar", fields="";
     if(!isDeuda && key!=="ahorros"){
@@ -450,16 +471,16 @@ class Finanzas {
             + f("montoTotal","number","Monto total",it.montoTotal,"step='1' min='1'")
             + f("numeroCuotas","number","Cuotas",it.numeroCuotas,"step='1' min='1'")
             + f("cuotasPagadas","number","Pagadas",it.cuotasPagadas||0,"step='1' min='0'")
-            + f("tasa","text","Tasa mensual % (coma)",formatPctComma(it.tasaMensual),"inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
+            + f("tasa","text","Tasa mensual % (coma)",formatPctComma(it.tasaMensual),"data-comma");
     }else if(key==="creditos"){
       title="Editar Crédito";
       fields= f("nombre","text","Nombre",it.nombre)
             + f("montoTotal","number","Monto total",it.montoTotal,"step='1' min='1'")
             + f("numeroCuotas","number","Cuotas",it.numeroCuotas,"step='1' min='1'")
             + f("cuotasPagadas","number","Pagadas",it.cuotasPagadas||0,"step='1' min='0'")
-            + f("tasa","text","Tasa mensual % (coma)",formatPctComma(it.tasaMensual),"inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'")
-            + f("aval","text","Aval %",it.avalPct?formatPctComma(it.avalPct):"0,00","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'")
-            + f("ivaAval","text","IVA aval %",it.ivaAvalPct?formatPctComma(it.ivaAvalPct):"0,00","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
+            + f("tasa","text","Tasa mensual % (coma)",formatPctComma(it.tasaMensual),"data-comma")
+            + f("aval","text","Aval %",it.avalPct?formatPctComma(it.avalPct):"0,00","data-comma")
+            + f("ivaAval","text","IVA aval %",it.ivaAvalPct?formatPctComma(it.ivaAvalPct):"0,00","data-comma");
     }
 
     this.showModal(title, fields, (vals)=>{
@@ -469,14 +490,14 @@ class Finanzas {
       }else if(key==="ahorros"){
         Object.assign(it,{nombre:vals.nombre,meta:n(vals.meta),actual:n(vals.actual)});
       }else if(key==="tarjetas"){
-        const tasa=pct(vals.tasa); if(!(tasa>0 && tasa<=0.5)){ this.toast("Tasa inválida (≤50%)"); return; }
+        const tasa=pct(vals.tasa); if(!(tasa>0 && tasa<=0.05)){ this.toast("Tasa inválida (≤5%)"); return; }
         const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
         Object.assign(it,{nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,cuotaMensual:this.cuota(M,tasa,cu)});
       }else if(key==="creditos"){
         const tasa=pct(vals.tasa), aval=pct(vals.aval||"0"), iva=pct(vals.ivaAval||"0");
-        if(!(tasa>0 && tasa<=0.5)){ this.toast("Tasa inválida (≤50%)"); return; }
-        if(aval<0||aval>0.6){ this.toast("Aval fuera de rango (0%–60%)"); return; }
-        if(iva<0||iva>0.6){ this.toast("IVA aval fuera de rango (0%–60%)"); return; }
+        if(!(tasa>0 && tasa<=0.05)){ this.toast("Tasa inválida (≤5%)"); return; }
+        if(aval<0||aval>0.3){ this.toast("Aval fuera de rango (0%–30%)"); return; }
+        if(iva<0||iva>0.3){ this.toast("IVA aval fuera de rango (0%–30%)"); return; }
         const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
         Object.assign(it,{nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,avalPct:aval,ivaAvalPct:iva,cuotaMensual:this.cuota(M,tasa,cu,aval,iva)});
       }
@@ -486,8 +507,15 @@ class Finanzas {
 
   del(key,id){
     if(!confirm("¿Eliminar registro?")) return;
-    this.data[this.mes][key]=(this.data[this.mes][key]||[]).filter(x=>x.id!==id);
+    this.data[this.mes][key] = (this.data[this.mes][key]||[]).filter(x=>x.id!==id);
     this.save(); this.renderAll(); this.toast("Eliminado");
+  }
+
+  togglePaid(key,id){
+    const it = (this.mesData[key]||[]).find(x=>x.id===id);
+    if(!it) return;
+    it.paid = !it.paid;
+    this.save(); this.renderAll(); this.toast(it.paid ? "Marcado como pagado" : "Desmarcado");
   }
 
   addAhorroMonto(id){
@@ -501,35 +529,32 @@ class Finanzas {
     const modal=this.btns.modal, form=this.btns.modalForm, titleEl=this.btns.modalTitle;
     titleEl.textContent=title;
     form.innerHTML= innerHtml + `
-      <div class="actions" style="margin-top:12px">
-        <button type="submit" class="btn">Guardar</button>
+      <div class="actions" style="display:flex;gap:12px;justify-content:flex-end;margin-top:10px">
+        <button type="submit" class="btn primary">Guardar</button>
         <button type="button" class="btn" id="cancelModal">Cancelar</button>
       </div>`;
-
     modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
-
-    const cancel=()=>this.closeModal();
+    // attach cancel
     const cancelBtn=document.getElementById("cancelModal");
-    if(cancelBtn) cancelBtn.onclick=cancel;
+    if(cancelBtn) cancelBtn.onclick=()=>this.closeModal();
 
+    // form submit
     form.onsubmit=(e)=>{
       e.preventDefault();
       const vals={};
       [...form.querySelectorAll("input")].forEach(inp=>{ const id=inp.id.replace(/^f_/,""); vals[id]=inp.value; });
-      // cerramos antes para evitar modal colgado
+      // close first (avoid modal stuck)
       this.closeModal();
-      // ejecutamos guardado después con pequeño delay para asegurar DOM limpio
-      setTimeout(()=>onSubmit(vals),50);
+      // onSubmit after a tick
+      setTimeout(()=>onSubmit(vals),0);
     };
   }
 
   closeModal(){
-    const modal=this.btns.modal, form=this.btns.modalForm, titleEl=this.btns.modalTitle;
-    if(form) form.onsubmit=null;
+    const modal=this.btns.modal, form=this.btns.modalForm;
     if(modal) modal.classList.add("hidden");
     if(modal) modal.setAttribute("aria-hidden","true");
     if(form) form.innerHTML="";
-    if(titleEl) titleEl.textContent="";
   }
 
   /* ====== Otros ====== */
@@ -539,7 +564,8 @@ class Finanzas {
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
     a.href=url; a.download="organizador-financiero.json"; a.click(); URL.revokeObjectURL(url);
   }
-  reset(){ if(confirm("¿Borrar datos locales?")){ localStorage.removeItem(this.key); localStorage.removeItem(`${this.key}_mes`); location.reload(); } }
-  toast(m){ const t=this.toastEl; if(!t) return; t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1500); }
+  reset(){ if(confirm("¿Borrar datos locales?")){ localStorage.removeItem(this.key); localStorage.removeItem(this.selKey); location.reload(); } }
+  toast(m){ const t=this.toastEl; if(!t) return; t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1600); }
 }
-window.app=new Finanzas();
+
+window.app = new Finanzas();
