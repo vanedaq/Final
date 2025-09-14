@@ -1,42 +1,37 @@
-const CACHE_NAME = 'organizador-cache-v1';
+const CACHE_NAME = 'organizador-v1';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/style.app.css',
-  '/app.app.js',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/', '/index.html', '/style.app.css', '/app.app.js', '/manifest.json'
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
-  );
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS).catch(()=>{}))
+  );
 });
 
 self.addEventListener('activate', event => {
+  self.clients.claim();
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
-      keys.map(k => { if(k !== CACHE_NAME) return caches.delete(k); })
+      keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k))
     ))
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== location.origin) return;
-
+  // Estrategia: try cache, fallback fetch, and store
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(resp => {
-        return caches.open(CACHE_NAME).then(cache=>{
-          cache.put(event.request, resp.clone());
-          return resp;
-        });
+    caches.match(event.request).then(resp => {
+      if(resp) return resp;
+      return fetch(event.request).then(networkRes => {
+        // opcionalmente cachear
+        if(event.request.method === 'GET' && networkRes && networkRes.status === 200){
+          caches.open(CACHE_NAME).then(cache => {
+            try{ cache.put(event.request, networkRes.clone()); }catch(e){}
+          });
+        }
+        return networkRes.clone();
       }).catch(()=>caches.match('/index.html'));
     })
   );
