@@ -454,4 +454,100 @@ class Finanzas {
             + f("montoTotal","number","Monto total",it.montoTotal,"step='1' min='1'")
             + f("numeroCuotas","number","Cuotas",it.numeroCuotas,"step='1' min='1'")
             + f("cuotasPagadas","number","Pagadas",it.cuotasPagadas||0,"step='1' min='0'")
-            + f("tasa","text","Tasa mensual % (coma)",formatPctComma(it.tasaMensual,2),"inputmode='decimal' oninput='this.value=this.value.replace(\"
+            + f("tasa","text","Tasa mensual % (coma)",formatPctComma(it.tasaMensual,2),"inputmode='decimal' oninput='this.value=this.value.replace(\".\",\",\");'")
+            + f("aval","text","Aval %",it.avalPct?formatPctComma(it.avalPct):"0,00","inputmode='decimal' oninput='this.value=this.value.replace(\".\",\",\");'")
+            + f("ivaAval","text","IVA aval %",it.ivaAvalPct?formatPctComma(it.ivaAvalPct):"0,00","inputmode='decimal' oninput='this.value=this.value.replace(\".\",\",\");'");
+    }
+
+    this.showModal(title, fields, (vals)=>{
+      const n=(x)=>Number(x||0), pct=(x)=>this.rateFromInput(x);
+      if(!isDeuda && key!=="ahorros"){
+        Object.assign(it,{nombre:vals.nombre,monto:n(vals.monto),categoria:vals.categoria,fecha:vals.fecha});
+      }else if(key==="ahorros"){
+        Object.assign(it,{nombre:vals.nombre,meta:n(vals.meta),actual:n(vals.actual)});
+      }else if(key==="tarjetas"){
+        const tasa=pct(vals.tasa); if(!(tasa>=0 && tasa<=0.5)){ this.toast("Tasa inválida (≤50%)"); return; }
+        const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
+        Object.assign(it,{nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,cuotaMensual:this.cuota(M,tasa,cu)});
+      }else if(key==="creditos"){
+        const tasa=pct(vals.tasa), aval=pct(vals.aval||"0"), iva=pct(vals.ivaAval||"0");
+        if(!(tasa>=0 && tasa<=0.5)){ this.toast("Tasa inválida (≤50%)"); return; }
+        if(aval<0||aval>1){ this.toast("Aval fuera de rango (0%–100%)"); return; }
+        if(iva<0||iva>1){ this.toast("IVA aval fuera de rango (0%–100%)"); return; }
+        const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
+        Object.assign(it,{nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,avalPct:aval,ivaAvalPct:iva,cuotaMensual:this.cuota(M,tasa,cu,aval,iva)});
+      }
+      this.save(); this.renderAll(); this.toast("Actualizado");
+    });
+  }
+
+  del(key,id){
+    if(!confirm("¿Eliminar registro?")) return;
+    this.data[this.mes][key]=(this.data[this.mes][key]||[]).filter(x=>x.id!==id);
+    this.save(); this.renderAll(); this.toast("Eliminado");
+  }
+
+  togglePaid(key,id){
+    const list=this.mesData[key]; if(!list) return;
+    const it=list.find(x=>x.id===id); if(!it) return;
+    it.paid = !it.paid;
+    this.save(); this.renderAll(); this.toast(it.paid ? "Marcado como pagado" : "Marcado como pendiente");
+  }
+
+  addAhorroMonto(id){
+    const a=this.mesData.ahorros.find(x=>x.id===id); if(!a) return;
+    const m=prompt("¿Cuánto agregar?","0"); const n=Number(m);
+    if(n>0){ a.actual+=n; this.save(); this.renderAll(); this.toast("Ahorro agregado"); }
+  }
+
+  showModal(title, innerHtml, onSubmit){
+    const modal=this.btns.modal, form=this.btns.modalForm, titleEl=this.btns.modalTitle;
+    titleEl.textContent=title;
+    form.innerHTML= innerHtml + `
+      <div class="actions" style="margin-top:12px">
+        <button type="submit" class="primary">Guardar</button>
+        <button type="button" class="cancel" id="cancelModal">Cancelar</button>
+      </div>`;
+    modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
+    const cancel=()=>this.closeModal();
+    const cancelBtn = document.getElementById("cancelModal");
+    if(cancelBtn) cancelBtn.onclick=cancel;
+    const xbtn = this.btns.closeModal;
+    if(xbtn) xbtn.onclick = cancel;
+    form.onsubmit=(e)=>{
+      e.preventDefault();
+      const vals={};
+      [...form.querySelectorAll("input")].forEach(inp=>{ const id=inp.id.replace(/^f_/,""); vals[id]=inp.value; });
+      try{ this.closeModal(); } catch(e){}
+      setTimeout(()=>{ try{ onSubmit(vals); }catch(err){ console.error('onSubmit error:', err); this.toast('Error guardando (ver consola)'); } },0);
+    };
+  }
+  closeModal(){
+    const modal=this.btns.modal, form=this.btns.modalForm;
+    if(modal) modal.classList.add("hidden");
+    if(modal) modal.setAttribute("aria-hidden","true");
+    if(form) form.innerHTML="";
+  }
+
+  export(){
+    const data={exportado:new Date().toISOString(),mes:this.mes,datos:this.data};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a");
+    a.href=url; a.download="organizador-financiero.json"; a.click(); URL.revokeObjectURL(url);
+  }
+  reset(){ if(confirm("¿Borrar datos locales?")){ localStorage.removeItem(this.key); localStorage.removeItem(this.key + "_mes"); location.reload(); } }
+  toast(m){ const t=this.toastEl; if(!t) return; t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800); }
+}
+
+window.app = new Finanzas();
+
+/* parche extra para cierre modal con Escape y botones X */
+(function(){
+  document.body.addEventListener('click', function(e){
+    const btn = e.target.closest('.modal-close');
+    if(btn && window.app && typeof window.app.closeModal === 'function') window.app.closeModal();
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && window.app && typeof window.app.closeModal === 'function') window.app.closeModal();
+  });
+})();
