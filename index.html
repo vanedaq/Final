@@ -4,125 +4,97 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Organizador Financiero</title>
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.app.css">
-  <meta name="theme-color" content="#6C5CE7">
 </head>
 <body>
   <header class="hero">
     <div class="hero-inner">
       <div class="logo">💰</div>
-      <div>
-        <h1>Organizador Financiero</h1>
-        <p class="subtitle">Control inteligente de tus finanzas</p>
-      </div>
+      <h1>Organizador Financiero</h1>
+      <p class="sub">Control inteligente de tus finanzas</p>
       <div class="controls">
         <select id="mesSelector" aria-label="Mes"></select>
-        <button id="exportBtn" class="btn primary">📥 Exportar</button>
+        <button id="exportBtn" class="btn">📥 Exportar</button>
         <button id="resetBtn" class="btn danger">🧹 Reset</button>
       </div>
     </div>
-    <div class="summary" id="panelSummary">
-      <div class="tile">💵 Ingresos <div id="sumIngresos">$ 0</div></div>
-      <div class="tile">🏠 Fijos <div id="sumFijos">$ 0</div></div>
-      <div class="tile">💳 Tarjetas <div id="sumTarjetas">$ 0</div></div>
-      <div class="tile">🏦 Créditos <div id="sumCreditos">$ 0</div></div>
-      <div class="tile">🛒 Compras <div id="sumCompras">$ 0</div></div>
-      <div class="tile">💎 Ahorros <div id="sumAhorros">$ 0</div></div>
-      <div class="tile dark">📉 Total Gastos <div id="sumGastos">$ 0</div></div>
-      <div class="tile green">🪙 Disponible <div id="sumLibre">$ 0</div></div>
+    <div class="cards" id="topCards">
+      <div class="card">💵<div class="label">Ingresos</div><div id="sumIngresos" class="value">$ 0</div></div>
+      <div class="card">🏠<div class="label">Fijos</div><div id="sumFijos" class="value">$ 0</div></div>
+      <div class="card">💳<div class="label">Tarjetas</div><div id="sumTarjetas" class="value">$ 0</div></div>
+      <div class="card">🏦<div class="label">Créditos</div><div id="sumCreditos" class="value">$ 0</div></div>
+      <div class="card">🛒<div class="label">Compras</div><div id="sumCompras" class="value">$ 0</div></div>
+      <div class="card">💎<div class="label">Ahorros</div><div id="sumAhorros" class="value">$ 0</div></div>
+      <div class="card dark">📈<div class="label">Total Gastos</div><div id="sumGastos" class="value">$ 0</div></div>
+      <div class="card green">🪙<div class="label">Disponible</div><div id="sumLibre" class="value">$ 0</div></div>
     </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
-    <button class="tab" data-tab="ingresos">💵 Ingresos</button>
-    <button class="tab" data-tab="fijos">🏠 Fijos</button>
-    <button class="tab" data-tab="tarjetas">💳 Tarjetas</button>
-    <button class="tab" data-tab="creditos">🏦 Créditos</button>
-    <button class="tab" data-tab="compras">🛒 Compras</button>
-    <button class="tab" data-tab="ahorros">💎 Ahorros</button>
-    <button class="tab" data-tab="consejos">💡 Consejos</button>
-  </nav>
-
   <main class="main">
+    <section id="analisisMensual"></section>
+
+    <section class="tabs">
+      <div class="tab active" data-tab="dashboard">📊 Dashboard</div>
+      <div class="tab" data-tab="ingresos">💵 Ingresos</div>
+      <div class="tab" data-tab="fijos">🏠 Fijos</div>
+      <div class="tab" data-tab="tarjetas">💳 Tarjetas</div>
+      <div class="tab" data-tab="creditos">🏦 Créditos</div>
+      <div class="tab" data-tab="compras">🛒 Compras</div>
+      <div class="tab" data-tab="ahorros">💎 Ahorros</div>
+    </section>
+
     <section id="dashboard" class="panel">
-      <h2>📈 Análisis del Mes</h2>
-      <div id="analisisMensual" class="card"></div>
-
-      <h2>🎯 Metas de Ahorro</h2>
-      <div id="metasAhorro" class="card meta"></div>
-
-      <h2>📚 Historial</h2>
-      <div id="tablaHistorial" class="card meta"></div>
-
-      <h2>💡 Recomendaciones</h2>
-      <div id="recomendaciones" class="card meta"></div>
+      <h2>Dashboard aquí</h2>
     </section>
 
     <section id="ingresos" class="panel hidden">
-      <div class="section-header">
-        <h2>💵 Ingresos</h2>
-        <button id="addIngreso" class="btn">+ Agregar</button>
-      </div>
+      <button id="addIngreso" class="add">+ Agregar</button>
       <div id="listaIngresos"></div>
     </section>
 
     <section id="fijos" class="panel hidden">
-      <div class="section-header">
-        <h2>🏠 Gastos Fijos</h2>
-        <button id="addFijo" class="btn">+ Agregar</button>
-      </div>
+      <button id="addFijo" class="add">+ Agregar</button>
       <div id="listaFijos"></div>
     </section>
 
     <section id="tarjetas" class="panel hidden">
-      <div class="section-header">
-        <h2>💳 Tarjetas de Crédito</h2>
-        <button id="addTarjeta" class="btn">+ Agregar</button>
-      </div>
+      <button id="addTarjeta" class="add">+ Agregar</button>
       <div id="listaTarjetas"></div>
     </section>
 
     <section id="creditos" class="panel hidden">
-      <div class="section-header">
-        <h2>🏦 Créditos Bancarios</h2>
-        <button id="addCredito" class="btn">+ Agregar</button>
-      </div>
+      <button id="addCredito" class="add">+ Agregar</button>
       <div id="listaCreditos"></div>
     </section>
 
     <section id="compras" class="panel hidden">
-      <div class="section-header">
-        <h2>🛒 Compras</h2>
-        <button id="addCompra" class="btn">+ Agregar</button>
-      </div>
+      <button id="addCompra" class="add">+ Agregar</button>
       <div id="listaCompras"></div>
     </section>
 
     <section id="ahorros" class="panel hidden">
-      <div class="section-header">
-        <h2>💎 Metas de Ahorro</h2>
-        <button id="addAhorro" class="btn">+ Nueva Meta</button>
-      </div>
+      <button id="addAhorro2" class="add">+ Nueva Meta</button>
       <div id="listaAhorros"></div>
     </section>
 
-    <section id="consejos" class="panel hidden">
-      <h2>💡 Consejos</h2>
-      <div id="recomendaciones2" class="card meta"></div>
-    </section>
+    <section id="metasAhorro"></section>
+
+    <section id="tablaHistorial"></section>
+
+    <div id="recomendaciones"></div>
   </main>
 
   <!-- Modal -->
   <div id="modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true">
-      <button id="closeModal" class="modal-close" aria-label="Cerrar">✖</button>
+    <div class="modal-window">
+      <button id="closeModal" class="modal-close" title="Cerrar">✕</button>
       <h3 id="modalTitle">Formulario</h3>
       <form id="modalForm"></form>
     </div>
   </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="toast" class="toast" aria-hidden="true"></div>
 
   <script src="app.app.js"></script>
 </body>
