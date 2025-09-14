@@ -1,10 +1,9 @@
 /* ============== Utilidades ============== */
 const fmt = (v) => new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",minimumFractionDigits:0}).format(v||0);
 
-/** "1,84" -> 0.0184 (fracción mensual). Solo coma permitido. */
+/** "1,84" -> 0.0184 (fracción mensual). Acepta coma. */
 function parsePctComma(str){
   const s = String(str||"").trim();
-  // aceptar "1", "1,8", "1,84", "12,345"
   if(!/^\d+(,\d{1,3})?$/.test(s)) return NaN;
   const [ent,dec=""]=s.split(",");
   const n = Number(ent) + (dec? Number(dec)/Math.pow(10,dec.length):0);
@@ -68,7 +67,7 @@ class Finanzas {
       if(k==="closeModal") el.onclick=()=>this.closeModal();
     });
 
-    // Delegación para editar/eliminar/añadir ahorro
+    // Delegación: edit / delete / add ahorro
     document.body.addEventListener("click",(ev)=>{
       const a=ev.target.closest("a[data-action]"); if(!a) return;
       ev.preventDefault();
@@ -78,19 +77,18 @@ class Finanzas {
       if(act==="addsave") this.addAhorroMonto(id);
     });
 
-    // Cerrar modal haciendo click fuera (overlay)
+    // Cerrar modal por overlay y Escape
     this.btns.modal.addEventListener("click",(e)=>{ if(e.target.id==="modal") this.closeModal(); });
     document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") this.closeModal(); });
 
-    // Normaliza puntos/comas en inputs (si quieres usar coma, lo parseamos en JS)
+    // Normalizar input decimal (mientras escriben) -> convertir punto a coma para la UX hispana
     document.body.addEventListener('input', (e) => {
       const el = e.target;
       if(!el) return;
       if(el.getAttribute && el.getAttribute('inputmode') === 'decimal'){
-        // reemplaza punto por coma para facilitar ingreso
         el.value = el.value.replace('.',',').replace(/[^\d,]/g,'');
       }
-    });
+    }, {passive:true});
   }
 
   showTab(name){
@@ -98,10 +96,11 @@ class Finanzas {
     this.panels.forEach(p=>p.classList.toggle("hidden",p.id!==name));
   }
 
-  /* ====== Storage & datos ====== */
+  /* ====== Storage & seed ====== */
   uid(){ return Date.now()+Math.floor(Math.random()*1e6); }
   load(){
     try{ const raw=localStorage.getItem(this.key); if(raw) return JSON.parse(raw); }catch{}
+    // seed inicial útil
     const seed={}; seed[this.iniYM]={
       ingresos:[{id:this.uid(),nombre:"Salario",monto:3500000,categoria:"Trabajo",fecha:`${this.iniYM}-01`}],
       gastosFijos:[{id:this.uid(),nombre:"Arriendo",monto:1200000,categoria:"Vivienda",fecha:`${this.iniYM}-01`}],
@@ -114,21 +113,22 @@ class Finanzas {
   }
   save(){ try{ localStorage.setItem(this.key,JSON.stringify(this.data)); }catch{} }
 
+  /** Crear mes nuevo — copia del mes previo (ingresos, fijos, tarjetas, creditos, ahorros) */
   ensureMonth(key){
     if(this.data[key]) return;
-    // si existe mes previo, copiar fijos, tarjetas y creditos (no duplicar ids)
     const [y,m]=key.split("-").map(Number);
     let py=y, pm=m-1; if(pm<=0){pm=12;py--;}
     const prev=`${py}-${String(pm).padStart(2,"0")}`;
     if(this.data[prev]){
-      const copy={};
-      // copia de arrays que queremos mantener (ingresos opcionalmente vacío? aqui mantenemos fijos, tarjetas, creditos)
-      copy.ingresos = []; // no copiar ingresos por defecto
-      copy.gastosFijos = (this.data[prev].gastosFijos||[]).map(it=>{ const n= JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; });
-      copy.tarjetas = (this.data[prev].tarjetas||[]).map(it=>{ const n= JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; });
-      copy.creditos = (this.data[prev].creditos||[]).map(it=>{ const n= JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; });
-      copy.gastosCompras = []; // compras normalmente no se copian
-      copy.ahorros = (this.data[prev].ahorros||[]).map(it=>{ const n= JSON.parse(JSON.stringify(it)); n.id=this.uid(); return n; });
+      const prevObj=this.data[prev];
+      const copy={
+        ingresos: prevObj.ingresos.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
+        gastosFijos: prevObj.gastosFijos.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
+        tarjetas: prevObj.tarjetas.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
+        creditos: prevObj.creditos.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
+        gastosCompras: prevObj.gastosCompras.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); n.fecha=`${key}-01`; return n; }),
+        ahorros: prevObj.ahorros.map(it=>{ const n=JSON.parse(JSON.stringify(it)); n.id=this.uid(); return n; })
+      };
       this.data[key]=copy;
     }else{
       this.data[key]={ingresos:[],gastosFijos:[],tarjetas:[],creditos:[],gastosCompras:[],ahorros:[]};
@@ -151,25 +151,23 @@ class Finanzas {
     this.ensureMonth(this.mes);
   }
 
-  /* ====== Finanzas ====== */
+  /* ====== Finanzas: cuota (sistema francés) ====== */
   rateFromInput(pctStr){ const r=parsePctComma(pctStr); return isNaN(r)?0:r; }
 
-  /** Cuota francés (sistema francés) + aval + IVA-aval */
   cuota(M,i,n,avalPct=0,ivaAvalPct=0){
     if(!n||n<=0) return 0;
     let base;
     if(!i || i===0) base = M / n;
     else {
-      // A = M * i / (1 - (1+i)^-n)
-      const f = Math.pow(1+i, -n);
-      base = M * i / (1 - f);
+      // fórmula: A = M * i / (1 - (1+i)^-n)
+      const denom = 1 - Math.pow(1+i, -n);
+      base = M * i / denom;
     }
     const avalMensual = (M * (avalPct||0)) / n;
     const ivaAvalMensual = avalMensual * (ivaAvalPct||0);
     return Math.round(base + avalMensual + ivaAvalMensual);
   }
 
-  /** Recalcula cuotas guardadas para evitar “pegadas” */
   recalcDeudas(d){
     (d.tarjetas||[]).forEach(it=>{
       const nueva=this.cuota(Number(it.montoTotal||0),Number(it.tasaMensual||0),parseInt(it.numeroCuotas||0));
@@ -210,15 +208,15 @@ class Finanzas {
     const totalG=totalFix+totalTar+totalCre+totalCom;
     const libre=totalIng-totalG;
 
-    const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.innerHTML = val; };
-    set("sumIngresos",`<strong>💵</strong> <div>${fmt(totalIng)}</div>`);
-    set("sumFijos",`<strong>🏠</strong> <div>${fmt(totalFix)}</div>`);
-    set("sumTarjetas",`<strong>💳</strong> <div>${fmt(totalTar)}</div>`);
-    set("sumCreditos",`<strong>🏦</strong> <div>${fmt(totalCre)}</div>`);
-    set("sumCompras",`<strong>🛒</strong> <div>${fmt(totalCom)}</div>`);
-    set("sumAhorros",`<strong>💎</strong> <div>${fmt(totalAho)}</div>`);
-    set("sumGastos",`<strong>📉</strong> <div>${fmt(totalG)}</div>`);
-    set("sumLibre",`<strong>💰</strong> <div>${fmt(libre)}</div>`);
+    const set=(id,title,val)=>{ const el=document.getElementById(id); if(!el) return; el.querySelector('.title').textContent=title; el.querySelector('.value').textContent=val; };
+    set("sumIngresos","💵 Ingresos",fmt(totalIng));
+    set("sumFijos","🏠 Fijos",fmt(totalFix));
+    set("sumTarjetas","💳 Tarjetas",fmt(totalTar));
+    set("sumCreditos","🏦 Créditos",fmt(totalCre));
+    set("sumCompras","🛒 Compras",fmt(totalCom));
+    set("sumAhorros","💎 Ahorros",fmt(totalAho));
+    set("sumGastos","📉 Total Gastos",fmt(totalG));
+    set("sumLibre","💰 Disponible",fmt(libre));
 
     this.renderDashboard(totalIng,totalG,libre);
     this.renderMetas(d.ahorros);
@@ -231,7 +229,7 @@ class Finanzas {
   rowGeneric(icon,i,key,monto){
     return `<div class="item">
       <div class="row">
-        <div>${icon} <b>${i.nombre}</b><div class="meta">${i.categoria||"General"} · ${i.fecha||""}</div></div>
+        <div>${icon} <b>${i.nombre}</b><div class="meta">${i.categoria||""} ${i.fecha?`· ${i.fecha}`:""}</div></div>
         <div><b>${fmt(monto)}</b></div>
       </div>
       <div class="actions">
@@ -240,11 +238,12 @@ class Finanzas {
       </div>
     </div>`;
   }
+
   rowTarjeta(i,key){
     return `<div class="item ${i.paid?'is-paid':''}">
       <div class="row">
         <div>💳 <b>${i.nombre}</b>
-          <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas} · tasa ${formatPctComma(i.tasaMensual)}%</div>
+          <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas||0} · tasa ${formatPctComma(i.tasaMensual)}%</div>
         </div>
         <div><b>Total ${fmt(i.montoTotal)}</b></div>
       </div>
@@ -254,11 +253,12 @@ class Finanzas {
       </div>
     </div>`;
   }
+
   rowCredito(i,key){
     return `<div class="item ${i.paid?'is-paid':''}">
       <div class="row">
         <div>🏦 <b>${i.nombre}</b>
-          <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas}
+          <div class="meta">Cuota ${fmt(i.cuotaMensual)} · ${i.cuotasPagadas||0}/${i.numeroCuotas||0}
             · tasa ${formatPctComma(i.tasaMensual)}%
             ${i.avalPct?` · aval ${formatPctComma(i.avalPct)}%`:``}
             ${i.ivaAvalPct?` + IVA ${formatPctComma(i.ivaAvalPct)}%`:``}
@@ -272,6 +272,7 @@ class Finanzas {
       </div>
     </div>`;
   }
+
   rowAhorro(i,key){
     const p=i.meta?((i.actual/i.meta)*100).toFixed(1):0;
     const w=i.meta?Math.min(100,(i.actual/i.meta)*100):0;
@@ -299,6 +300,7 @@ class Finanzas {
     if(!el) return;
     el.innerHTML=`<div class="item"><b style="color:${color}">${fmt(libre)}</b> de balance — Ahorro ${tasa}%</div>`;
   }
+
   renderMetas(ahorros){
     const el=document.getElementById("metasAhorro"); if(!el) return;
     if(!ahorros || !ahorros.length){ el.innerHTML='<p class="meta">Crea una meta para empezar.</p>'; return; }
@@ -312,6 +314,7 @@ class Finanzas {
       </div>`;
     }).join("");
   }
+
   renderHistorial(){
     const el=document.getElementById("tablaHistorial"); if(!el) return;
     const meses=Object.keys(this.data).sort();
@@ -330,6 +333,7 @@ class Finanzas {
       <table style="width:100%;border-collapse:collapse"><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Balance</th><th>% Ahorro</th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
+
   renderConsejos(ing,gas){
     const el=document.getElementById("recomendaciones"); if(!el) return;
     const libre=ing-gas; const p=ing?(libre/ing)*100:0; const list=[];
@@ -346,6 +350,7 @@ class Finanzas {
       `<div class="field"><label>${label}</label><input type="${type}" id="f_${name}" value="${value??""}" ${extra}></div>`
     );
     let title="Formulario", fields="";
+    // campos por tipo
     if(tipo==="ingreso"){
       title="Nuevo Ingreso";
       fields= f("nombre","text","Nombre","")
@@ -387,6 +392,7 @@ class Finanzas {
             + f("aval","text","Aval % sobre capital (coma, ej: 12,00)","0,00","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'")
             + f("ivaAval","text","IVA del aval % (coma, ej: 19,00)","0,00","inputmode='decimal' pattern='^\\d+(,\\d{1,3})?$' oninput='this.value=this.value.replace(\".\",\",\");'");
     }
+
     this.showModal(title, fields, (vals)=>{
       const d=this.mesData;
       const n=(x)=>Number(x||0);
@@ -415,6 +421,7 @@ class Finanzas {
         const cuota=this.cuota(M,tasa,cu,aval,iva);
         d.creditos.push({id:this.uid(),nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,avalPct:aval,ivaAvalPct:iva,cuotaMensual:cuota,fecha:`${this.mes}-01`});
       }
+
       this.save(); this.renderAll(); this.toast("Guardado");
     });
   }
@@ -482,6 +489,7 @@ class Finanzas {
     this.data[this.mes][key]=(this.data[this.mes][key]||[]).filter(x=>x.id!==id);
     this.save(); this.renderAll(); this.toast("Eliminado");
   }
+
   addAhorroMonto(id){
     const a=this.mesData.ahorros.find(x=>x.id===id); if(!a) return;
     const m=prompt("¿Cuánto agregar?","0"); const n=Number(m);
@@ -491,33 +499,30 @@ class Finanzas {
   /* ====== Modal ====== */
   showModal(title, innerHtml, onSubmit){
     const modal=this.btns.modal, form=this.btns.modalForm, titleEl=this.btns.modalTitle;
-    // populate
     titleEl.textContent=title;
     form.innerHTML= innerHtml + `
       <div class="actions" style="margin-top:12px">
-        <button type="submit" class="primary btn">Guardar</button>
+        <button type="submit" class="btn">Guardar</button>
         <button type="button" class="btn" id="cancelModal">Cancelar</button>
       </div>`;
+
     modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
 
-    // Cancel/cerrar
     const cancel=()=>this.closeModal();
     const cancelBtn=document.getElementById("cancelModal");
     if(cancelBtn) cancelBtn.onclick=cancel;
-    // ensure close icon works (already bound in constructor)
 
-    // submit
     form.onsubmit=(e)=>{
       e.preventDefault();
-      // collect values
       const vals={};
       [...form.querySelectorAll("input")].forEach(inp=>{ const id=inp.id.replace(/^f_/,""); vals[id]=inp.value; });
-      // close modal first
+      // cerramos antes para evitar modal colgado
       this.closeModal();
-      // schedule callback to avoid race with modal removal
+      // ejecutamos guardado después con pequeño delay para asegurar DOM limpio
       setTimeout(()=>onSubmit(vals),50);
     };
   }
+
   closeModal(){
     const modal=this.btns.modal, form=this.btns.modalForm, titleEl=this.btns.modalTitle;
     if(form) form.onsubmit=null;
@@ -535,6 +540,6 @@ class Finanzas {
     a.href=url; a.download="organizador-financiero.json"; a.click(); URL.revokeObjectURL(url);
   }
   reset(){ if(confirm("¿Borrar datos locales?")){ localStorage.removeItem(this.key); localStorage.removeItem(`${this.key}_mes`); location.reload(); } }
-  toast(m){ const t=this.toastEl; if(!t) return; t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1700); }
+  toast(m){ const t=this.toastEl; if(!t) return; t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1500); }
 }
 window.app=new Finanzas();
