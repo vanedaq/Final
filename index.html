@@ -7,70 +7,69 @@
   <link rel="stylesheet" href="style.app.css" />
 </head>
 <body>
-  <div class="container">
-    <header class="header">
-      <div class="top">
-        <div class="logo">
-          <div class="icon">💰</div>
-          <div>
+  <div class="app-shell">
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="logo-row">
+          <div class="emoji">💰</div>
+          <div class="titles">
             <h1>Organizador Financiero</h1>
-            <p>Control inteligente de tus finanzas</p>
+            <p class="subtitle">Control inteligente de tus finanzas</p>
           </div>
         </div>
-        <div class="header-controls">
+
+        <div class="controls">
           <select id="mesSelector" class="select-month" aria-label="Seleccionar mes"></select>
           <button id="exportBtn" class="btn export">💾 Exportar</button>
           <button id="resetBtn" class="btn reset">🧹 Reset</button>
         </div>
       </div>
 
-      <div class="tiles" id="tilesResumen">
-        <!-- tiles generados por JS -->
-      </div>
+      <div id="tilesResumen" class="tiles"></div>
     </header>
 
-    <main>
-      <section class="section">
+    <main class="main">
+      <section class="panel">
         <h2>📊 Análisis del Mes</h2>
-        <div id="analisisMensual" class="item"></div>
+        <div id="analisisMensual" class="box"></div>
       </section>
 
-      <section class="section">
+      <section class="panel">
         <h2>🎯 Metas de Ahorro</h2>
         <div id="metasAhorro" class="list"></div>
       </section>
 
-      <section class="section">
+      <section class="panel">
         <h2>🧾 Historial</h2>
         <div id="tablaHistorial" class="table-wrap"></div>
       </section>
 
-      <section class="section">
+      <section class="panel">
         <h2>📥 Ingresos</h2>
         <div id="listaIngresos" class="list"></div>
       </section>
 
-      <section class="section">
+      <section class="panel">
         <h2>🏠 Gastos Fijos</h2>
         <div id="listaFijos" class="list"></div>
       </section>
 
-      <section class="section">
+      <section class="panel">
         <h2>💳 Tarjetas de Crédito <button id="addTarjeta" class="pill">+ Agregar</button></h2>
         <div id="listaTarjetas" class="list"></div>
       </section>
 
-      <section class="section">
+      <section class="panel">
         <h2>🏦 Créditos Bancarios <button id="addCredito" class="pill">+ Agregar</button></h2>
         <div id="listaCreditos" class="list"></div>
       </section>
 
-      <section class="section">
+      <section class="panel">
         <h2>🛒 Compras</h2>
         <div id="listaCompras" class="list"></div>
       </section>
 
-      <section class="section">
+      <section class="panel">
         <h2>💎 Ahorros <button id="addAhorro2" class="pill">+ Nueva Meta</button></h2>
         <div id="listaAhorros" class="list"></div>
       </section>
@@ -79,14 +78,15 @@
 
   <!-- Modal -->
   <div id="modal" class="modal hidden" aria-hidden="true" role="dialog">
+    <div class="modal-backdrop"></div>
     <div class="modal-content" role="document">
       <button id="closeModal" class="modal-close" aria-label="Cerrar">✕</button>
       <h3 id="modalTitle" class="modal-title">Formulario</h3>
-      <form id="modalForm"></form>
+      <form id="modalForm" class="modal-form"></form>
     </div>
   </div>
 
-  <div id="toast" aria-live="polite"></div>
+  <div id="toast" class="toast" aria-live="polite"></div>
 
   <script src="app.app.js"></script>
 </body>
