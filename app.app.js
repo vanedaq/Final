@@ -19,7 +19,9 @@ class Finanzas {
   constructor(){
     this.key="organizadorFinanciero";
     this.selKey="organizadorFinanciero_mesesel";
-    this.iniYM="2025-08";
+    // Comenzar desde el mes actual
+    const ahora = new Date();
+    this.iniYM = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`;
     this.mes = localStorage.getItem(this.selKey) || this.iniYM;
     this.data = this.load();
 
@@ -105,7 +107,7 @@ class Finanzas {
 
   load(){
     try{ const raw=localStorage.getItem(this.key); if(raw) return JSON.parse(raw); }catch{}
-    // seed
+    // seed con mes actual
     const seed={}; seed[this.iniYM]={
       ingresos:[{id:this.uid(),nombre:"Salario",monto:3500000,categoria:"Trabajo",fecha:`${this.iniYM}-01`}],
       gastosFijos:[{id:this.uid(),nombre:"Arriendo",monto:1200000,categoria:"Vivienda",fecha:`${this.iniYM}-01`,paid:false}],
@@ -118,29 +120,56 @@ class Finanzas {
   }
   save(){ try{ localStorage.setItem(this.key,JSON.stringify(this.data)); }catch{} }
 
+  // Función mejorada para buscar el mes anterior más cercano
+  findClosestPreviousMonth(targetKey) {
+    const allKeys = Object.keys(this.data).sort();
+    let closestKey = null;
+    
+    for (const key of allKeys) {
+      if (key < targetKey) {
+        closestKey = key;
+      } else {
+        break;
+      }
+    }
+    
+    return closestKey;
+  }
+
   ensureMonth(key){
     if(this.data[key]) return;
-    // buscar mes anterior disponible para copiar
-    const [y,m]=key.split("-").map(Number);
-    const prevDate = new Date(y,m-2,1); // month index-1 -> prev
-    const prev = `${prevDate.getFullYear()}-${String(prevDate.getMonth()+1).padStart(2,"0")}`;
-    if(this.data[prev]){
-      const copy = JSON.parse(JSON.stringify(this.data[prev]));
-      // reasign ids and set fecha to first of new month; keep paid flags
+    
+    // Buscar mes anterior más cercano para copiar datos
+    const prevKey = this.findClosestPreviousMonth(key);
+    
+    if(prevKey && this.data[prevKey]){
+      const copy = JSON.parse(JSON.stringify(this.data[prevKey]));
+      
+      // Reasignar IDs y actualizar fechas, mantener flags de paid
       Object.keys(copy).forEach(k=>{
         if(Array.isArray(copy[k])){
           copy[k]=copy[k].map(item=>{
             const it=Object.assign({}, item);
             it.id=this.uid();
             if(it.fecha) it.fecha = `${key}-01`;
-            // cuotas pagadas stay, paid flag preserved
+            
+            // Para tarjetas y créditos, resetear el estado de "paid" pero mantener cuotas pagadas
+            if(k === 'gastosFijos' || k === 'gastosCompras') {
+              it.paid = false; // Resetear estado de pago para gastos fijos y compras
+            }
+            if(k === 'tarjetas' || k === 'creditos') {
+              it.paid = false; // Resetear estado de pago mensual
+              // Las cuotas pagadas se mantienen para llevar el progreso
+            }
+            
             return it;
           });
         }
       });
       this.data[key]=copy;
+      this.toast(`Datos copiados del mes ${prevKey}`);
     }else{
-      // empty
+      // Si no hay datos previos, crear estructura vacía
       this.data[key]={ingresos:[],gastosFijos:[],tarjetas:[],creditos:[],gastosCompras:[],ahorros:[]};
     }
     this.save();
@@ -149,15 +178,32 @@ class Finanzas {
   buildMonths(){
     const sel=this.sel; if(!sel) return;
     sel.innerHTML="";
-    const [y,m]=this.iniYM.split("-").map(Number);
-    const d=new Date(y,m-1,1);
-    for(let i=0;i<48;i++){
-      const val=d.toISOString().slice(0,7);
-      const txt=d.toLocaleDateString("es-CO",{month:"long",year:"numeric"});
-      const opt=document.createElement("option");
-      opt.value=val; opt.textContent=txt; if(val===this.mes) opt.selected=true;
-      sel.appendChild(opt); d.setMonth(d.getMonth()+1);
+    
+    // Generar meses desde 2020 hasta 2030 (rango amplio)
+    const startYear = 2020;
+    const endYear = 2030;
+    const meses = [];
+    
+    for(let year = startYear; year <= endYear; year++) {
+      for(let month = 1; month <= 12; month++) {
+        const val = `${year}-${String(month).padStart(2, '0')}`;
+        const date = new Date(year, month - 1, 1);
+        const txt = date.toLocaleDateString("es-CO", {month: "long", year: "numeric"});
+        meses.push({val, txt});
+      }
     }
+    
+    // Ordenar por valor (año-mes) de forma descendente para tener los más recientes primero
+    meses.sort((a, b) => b.val.localeCompare(a.val));
+    
+    meses.forEach(({val, txt}) => {
+      const opt = document.createElement("option");
+      opt.value = val; 
+      opt.textContent = txt; 
+      if(val === this.mes) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    
     this.ensureMonth(this.mes);
   }
 
@@ -331,7 +377,7 @@ class Finanzas {
 
   renderHistorial(){
     const el=document.getElementById("tablaHistorial"); if(!el) return;
-    const meses=Object.keys(this.data).sort();
+    const meses=Object.keys(this.data).sort().reverse(); // Más recientes primero
     const rows=meses.map(m=>{
       const d=this.data[m];
       const ing=d.ingresos.reduce((s,x)=>s+(x.monto||0),0);
@@ -340,7 +386,8 @@ class Finanzas {
               + d.creditos.reduce((s,x)=>s+(x.cuotaMensual||0),0)
               + d.gastosCompras.reduce((s,x)=>s+(x.monto||0),0);
       const bal=ing-gas; const p=ing?((bal/ing)*100).toFixed(1):0;
-      return `<tr><td>${m}</td><td>${fmt(ing)}</td><td>${fmt(gas)}</td>
+      const fecha = new Date(m + '-01').toLocaleDateString("es-CO", {month: "long", year: "numeric"});
+      return `<tr><td>${fecha}</td><td>${fmt(ing)}</td><td>${fmt(gas)}</td>
         <td style="color:${bal>=0?"#00b894":"#ff6b6b"}">${fmt(bal)}</td><td>${p}%</td></tr>`;
     }).join("");
     el.innerHTML=`<div style="overflow:auto">
@@ -427,8 +474,8 @@ class Finanzas {
       }else if(tipo==="credito"){
         const tasa=pct(vals.tasa), aval=pct(vals.aval||"0"), iva=pct(vals.ivaAval||"0");
         if(!(tasa>=0 && tasa<=0.5)) { this.toast("Tasa inválida (usa coma, ≤50%)"); return; }
-        if(aval<0||aval>1){ this.toast("Aval fuera de rango (0%–100%)"); return; }
-        if(iva<0||iva>1){ this.toast("IVA aval fuera de rango (0%–100%)"); return; }
+        if(aval<0||aval>1){ this.toast("Aval fuera de rango (0%—100%)"); return; }
+        if(iva<0||iva>1){ this.toast("IVA aval fuera de rango (0%—100%)"); return; }
         const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
         const cuota=this.cuota(M,tasa,cu,aval,iva);
         d.creditos.push({id:this.uid(),nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,avalPct:aval,ivaAvalPct:iva,cuotaMensual:cuota,fecha:`${this.mes}-01`,paid:false});
@@ -485,8 +532,8 @@ class Finanzas {
       }else if(key==="creditos"){
         const tasa=pct(vals.tasa), aval=pct(vals.aval||"0"), iva=pct(vals.ivaAval||"0");
         if(!(tasa>=0 && tasa<=0.5)){ this.toast("Tasa inválida (≤50%)"); return; }
-        if(aval<0||aval>1){ this.toast("Aval fuera de rango (0%–100%)"); return; }
-        if(iva<0||iva>1){ this.toast("IVA aval fuera de rango (0%–100%)"); return; }
+        if(aval<0||aval>1){ this.toast("Aval fuera de rango (0%—100%)"); return; }
+        if(iva<0||iva>1){ this.toast("IVA aval fuera de rango (0%—100%)"); return; }
         const M=n(vals.montoTotal), cu=parseInt(vals.numeroCuotas||0), pag=parseInt(vals.cuotasPagadas||0);
         Object.assign(it,{nombre:vals.nombre,montoTotal:M,numeroCuotas:cu,cuotasPagadas:pag,tasaMensual:tasa,avalPct:aval,ivaAvalPct:iva,cuotaMensual:this.cuota(M,tasa,cu,aval,iva)});
       }
@@ -503,7 +550,7 @@ class Finanzas {
   togglePaid(key,id){
     const list=this.mesData[key]; const it=list.find(x=>x.id===id); if(!it) return;
     it.paid = !it.paid;
-    // If marking paid and it's a credit/tarjeta, increase cuotasPagadas if appropriate (optional)
+    // Si se marca como pagado y es tarjeta/crédito, aumentar cuotas pagadas si es apropiado
     if((key==="tarjetas"||key==="creditos") && it.cuotasPagadas < it.numeroCuotas && it.paid){
       it.cuotasPagadas = Math.min(it.numeroCuotas, (it.cuotasPagadas||0) + 1);
     }
