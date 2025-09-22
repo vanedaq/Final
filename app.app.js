@@ -34,6 +34,9 @@ class Finanzas {
     const ahora = new Date();
     this.iniMes = String(ahora.getMonth() + 1).padStart(2, '0');
     this.mes = localStorage.getItem(this.selKey) || this.iniMes;
+    
+    console.log("Inicializando app. Mes inicial:", this.iniMes, "Mes actual:", this.mes);
+    
     this.data = this.load();
 
     this.cacheEls();
@@ -47,10 +50,18 @@ class Finanzas {
   }
 
   cacheEls(){
+    console.log("Cacheando elementos del DOM...");
     this.tabs=[...document.querySelectorAll(".tab")];
     this.panels=[...document.querySelectorAll(".panel")];
     this.toastEl=document.getElementById("toast");
     this.sel=document.getElementById("mesSelector");
+    
+    if(!this.sel) {
+      console.error("ELEMENTO mesSelector NO ENCONTRADO EN EL DOM");
+    } else {
+      console.log("Elemento mesSelector encontrado correctamente");
+    }
+    
     this.btns={
       addIngreso: document.getElementById("addIngreso"),
       addFijo: document.getElementById("addFijo"),
@@ -183,7 +194,12 @@ class Finanzas {
   }
 
   buildMonths(){
-    const sel=this.sel; if(!sel) return;
+    const sel=this.sel; 
+    if(!sel) {
+      console.error("Selector de meses no encontrado");
+      return;
+    }
+    
     sel.innerHTML="";
     
     // Solo 12 meses sin año
@@ -202,13 +218,21 @@ class Finanzas {
       {val: '12', txt: 'Diciembre'}
     ];
     
+    console.log("Construyendo selector de meses. Mes actual:", this.mes);
+    
     meses.forEach(({val, txt}) => {
       const opt = document.createElement("option");
       opt.value = val; 
       opt.textContent = txt; 
-      if(val === this.mes) opt.selected = true;
+      if(val === this.mes) {
+        opt.selected = true;
+        console.log("Mes seleccionado:", txt);
+      }
       sel.appendChild(opt);
     });
+    
+    // Verificar que se crearon las opciones
+    console.log("Opciones creadas:", sel.children.length);
     
     this.ensureMonth(this.mes);
   }
